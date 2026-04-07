@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1b6fd8" />
+    <meta name="description" content="Kanban para controle de projetos com interface moderna e responsiva." />
+    <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
+    <link rel="apple-touch-icon" href="assets/icon.svg" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <title>Controle de Projetos | Kanban</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar" aria-label="Cabeçalho principal">
+        <div>
+          <p class="topbar__eyebrow">Gestão Ágil</p>
+          <h1>Controle de Projetos</h1>
+        </div>
+
+        <div class="topbar__actions">
+          <label class="field field--search" for="searchInput">
+            <span class="field__label">Buscar</span>
+            <input
+              id="searchInput"
+              type="search"
+              placeholder="Pesquisar por título, tag ou descrição"
+              autocomplete="off"
+            />
+          </label>
+
+          <label class="field" for="priorityFilter">
+            <span class="field__label">Prioridade</span>
+            <select id="priorityFilter">
+              <option value="all">Todas</option>
+              <option value="baixa">Baixa</option>
+              <option value="media">Média</option>
+              <option value="alta">Alta</option>
+            </select>
+          </label>
+
+          <label class="field" for="assigneeFilter">
+            <span class="field__label">Responsável</span>
+            <select id="assigneeFilter">
+              <option value="all">Todos</option>
+            </select>
+          </label>
+
+          <label class="field" for="sortBy">
+            <span class="field__label">Ordenar por</span>
+            <select id="sortBy">
+              <option value="updated_desc">Mais recente</option>
+              <option value="priority_desc">Prioridade (alta para baixa)</option>
+              <option value="priority_asc">Prioridade (baixa para alta)</option>
+              <option value="due_asc">Prazo (mais próximo)</option>
+              <option value="due_desc">Prazo (mais distante)</option>
+            </select>
+          </label>
+
+          <button id="newCardButton" class="btn btn--primary" type="button">
+            Novo Card
+          </button>
+
+          <button id="installAppButton" class="btn btn--secondary u-hidden" type="button">
+            Instalar App
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="kanban" aria-label="Board Kanban">
+          <div id="kanbanBoard" class="kanban-board">
+            <article class="kanban-column" data-status="backlog">
+              <header class="kanban-column__header">
+                <h2>Backlog</h2>
+                <span class="counter" data-counter="backlog">0</span>
+              </header>
+              <div class="kanban-column__body" data-dropzone="backlog">
+                <div class="dropzone-tip">Solte aqui</div>
+                <ul class="kanban-column__list" id="backlogList"></ul>
+              </div>
+            </article>
+
+            <article class="kanban-column" data-status="todo">
+              <header class="kanban-column__header">
+                <h2>A Fazer</h2>
+                <span class="counter" data-counter="todo">0</span>
+              </header>
+              <div class="kanban-column__body" data-dropzone="todo">
+                <div class="dropzone-tip">Solte aqui</div>
+                <ul class="kanban-column__list" id="todoList"></ul>
+              </div>
+            </article>
+
+            <article class="kanban-column" data-status="progress">
+              <header class="kanban-column__header">
+                <h2>Em Andamento</h2>
+                <span class="counter" data-counter="progress">0</span>
+              </header>
+              <div class="kanban-column__body" data-dropzone="progress">
+                <div class="dropzone-tip">Solte aqui</div>
+                <ul class="kanban-column__list" id="progressList"></ul>
+              </div>
+            </article>
+
+            <article class="kanban-column" data-status="review">
+              <header class="kanban-column__header">
+                <h2>Em Revisão</h2>
+                <span class="counter" data-counter="review">0</span>
+              </header>
+              <div class="kanban-column__body" data-dropzone="review">
+                <div class="dropzone-tip">Solte aqui</div>
+                <ul class="kanban-column__list" id="reviewList"></ul>
+              </div>
+            </article>
+
+            <article class="kanban-column" data-status="done">
+              <header class="kanban-column__header">
+                <h2>Concluído</h2>
+                <span class="counter" data-counter="done">0</span>
+              </header>
+              <div class="kanban-column__body" data-dropzone="done">
+                <div class="dropzone-tip">Solte aqui</div>
+                <ul class="kanban-column__list" id="doneList"></ul>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="cardModal" class="modal" aria-label="Modal do card">
+      <form id="cardForm" class="modal__content" method="dialog">
+        <header class="modal__header">
+          <h3 id="modalTitle">Novo Card</h3>
+          <button type="button" id="closeModalButton" class="btn btn--ghost" aria-label="Fechar modal">
+            Fechar
+          </button>
+        </header>
+
+        <div class="modal__grid">
+          <label class="field" for="titleInput">
+            <span class="field__label">Título</span>
+            <input id="titleInput" name="title" type="text" maxlength="80" required />
+          </label>
+
+          <label class="field" for="assigneeInput">
+            <span class="field__label">Responsável</span>
+            <input id="assigneeInput" name="assignee" type="text" maxlength="50" required />
+          </label>
+
+          <label class="field field--full" for="descriptionInput">
+            <span class="field__label">Descrição</span>
+            <textarea id="descriptionInput" name="description" rows="3" maxlength="220" required></textarea>
+          </label>
+
+          <label class="field" for="priorityInput">
+            <span class="field__label">Prioridade</span>
+            <select id="priorityInput" name="priority" required>
+              <option value="baixa">Baixa</option>
+              <option value="media" selected>Média</option>
+              <option value="alta">Alta</option>
+            </select>
+          </label>
+
+          <label class="field" for="dueDateInput">
+            <span class="field__label">Data limite</span>
+            <input id="dueDateInput" name="dueDate" type="date" required />
+          </label>
+
+          <label class="field" for="tagInput">
+            <span class="field__label">Tag/Categoria</span>
+            <input id="tagInput" name="tag" type="text" maxlength="30" required />
+          </label>
+
+          <label class="field" for="statusInput">
+            <span class="field__label">Coluna</span>
+            <select id="statusInput" name="status" required>
+              <option value="backlog">Backlog</option>
+              <option value="todo">A Fazer</option>
+              <option value="progress">Em Andamento</option>
+              <option value="review">Em Revisão</option>
+              <option value="done">Concluído</option>
+            </select>
+          </label>
+
+          <label class="field" for="colorInput">
+            <span class="field__label">Cor do Card</span>
+            <input id="colorInput" name="postItColor" type="color" value="#ffe98f" />
+          </label>
+        </div>
+
+        <footer class="modal__footer">
+          <button type="button" id="cancelModalButton" class="btn btn--ghost">Cancelar</button>
+          <button type="submit" id="saveCardButton" class="btn btn--primary">Salvar Card</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

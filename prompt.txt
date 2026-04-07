@@ -1,0 +1,95 @@
+Crie uma aplicação web completa para controle de projetos em formato Kanban, com layout profissional, moderno e responsivo, utilizando apenas HTML, CSS e JavaScript puro.
+
+Objetivo:
+Desenvolver uma tela de gestão de projetos estilo Kanban, com visual profissional, porém com cards no estilo “post-it” (papel adesivo), trazendo um equilíbrio entre aparência corporativa e visual criativo.
+
+Requisitos visuais:
+- Layout profissional e limpo (padrão sistemas corporativos)
+- Interface moderna e responsiva (desktop e mobile)
+- Paleta de cores equilibrada (fundo neutro + destaque nos cards)
+- Colunas com visual elegante e organizado
+- Cards com aparência de post-it realista:
+  - Fundo colorido (amarelo, azul, verde, rosa, etc.)
+  - Leve rotação aleatória (simulando papel colado)
+  - Sombra suave (profundidade)
+  - Pequeno efeito de “fita” no topo (simulando fixação)
+  - Dobra sutil no canto inferior
+  - Textura leve de papel
+- Animações suaves (hover, drag-and-drop)
+- Tipografia moderna e legível
+
+Estrutura da tela:
+- Header com:
+  - Nome do sistema: “Controle de Projetos”
+  - Campo de busca
+  - Botão “Novo Card”
+- Área principal com colunas Kanban:
+  - Backlog
+  - A Fazer
+  - Em Andamento
+  - Em Revisão
+  - Concluído
+- Cada coluna deve ter contador de cards
+
+Cada card deve conter:
+- Título
+- Descrição curta
+- Responsável
+- Prioridade (baixa, média, alta)
+- Data limite
+- Tag/categoria
+- Indicador visual de prioridade
+- Botões de editar e excluir
+
+Funcionalidades em JavaScript:
+- Criar novo card via modal
+- Editar card
+- Excluir card
+- Drag-and-drop entre colunas
+- Persistência com localStorage
+- Filtro por texto (busca)
+- Filtro por prioridade
+- Filtro por responsável
+- Atualização automática da contagem por coluna
+
+Comportamento visual dos cards:
+- Cada card deve receber uma cor aleatória (estilo post-it)
+- Cada card deve ter uma leve rotação aleatória (ex: -2deg a 2deg)
+- Ao passar o mouse:
+  - Card sobe levemente
+  - Sombra aumenta
+- Ao arrastar:
+  - Card fica semi-transparente
+  - Destacar coluna de destino
+
+Organização do código:
+- HTML semântico e bem estruturado
+- CSS separado e organizado (nível profissional)
+- JavaScript modular e reutilizável
+- Código limpo, legível e de fácil manutenção
+- Estrutura pronta para evolução futura
+
+Dados mockados:
+- Criar exemplos reais de tarefas de desenvolvimento:
+  - “Criar tela de login”
+  - “Integrar API de pagamento”
+  - “Ajustar responsividade mobile”
+  - etc.
+
+Extras desejáveis:
+- Modal elegante para criação/edição
+- Toast de confirmação (salvar/excluir)
+- Badge de prioridade com cores
+- Scroll horizontal suave nas colunas
+- Preparado para futura integração com backend (Firebase ou API)
+
+Importante:
+- Não usar frameworks
+- Não usar bibliotecas externas
+- Código deve parecer de nível sênior
+- Interface pronta para apresentação profissional
+
+Entrega esperada:
+- index.html
+- style.css
+- script.js
