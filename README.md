@@ -19,8 +19,12 @@ A tela conta com cinco colunas padrao de fluxo de trabalho, filtros dinamicos, o
 - Criacao, edicao e exclusao de cards via modal
 - Drag-and-drop entre colunas
 - Contador automatico de cards por coluna
-- Filtro por texto, prioridade e responsavel
-- Ordenacao por mais recente, prioridade e prazo
+- Filtro por texto, data, prioridade e responsavel
+- Regras de ordenacao/exibicao:
+  - Backlog: prioridade (Alta > Media > Baixa) e, em empate, prazo mais proximo
+  - Concluido: exibe apenas os 30 mais recentes por padrao
+  - Concluido: exibe todos quando houver pesquisa ativa (texto ou data)
+- Ordenacao geral por mais recente, prioridade e prazo
 - Datas automaticas nos cards:
   - Data de criacao exibida em todos os cards
   - Data e hora de conclusao exibidas apenas quando o card for movido para "Concluido"
@@ -38,12 +42,21 @@ O app nao usa localStorage para os dados dos cards. Na primeira utilizacao, e ob
 - O diretorio configurado e lembrado entre sessoes (via IndexedDB)
 - Dados legados do localStorage sao migrados automaticamente na primeira abertura com diretorio configurado
 
-#### Botoes de gerenciamento
+#### Acesso e botoes de gerenciamento
+
+Os controles de persistencia ficam na tela de Configuracoes, acessada pelo icone de engrenagem no canto superior direito.
 
 | Botao | Funcao |
 |---|---|
-| Selecionar Diretorio | Escolhe (ou troca) a pasta local de dados |
+| Diretorio Ativo / Selecionar Diretorio | Escolhe (ou troca) a pasta local de dados |
 | Restaurar Ultimo | Restaura o snapshot mais recente da pasta `history/` |
+
+Na modal de Configuracoes:
+
+- Indicador de status (bolinha semaforo):
+  - Verde quando ha diretorio ativo
+  - Vermelho quando nao ha diretorio configurado
+- Exibicao do diretorio selecionado (nome da pasta, conforme permissao do navegador)
 
 #### Compatibilidade
 
@@ -69,7 +82,8 @@ Cada card contem:
 ## Estilo visual
 
 - Layout responsivo para desktop e mobile
-- Topbar com filtros em grid e botoes agrupados separadamente
+- Topbar com filtros em grid e alinhamento fluido
+- Botao de Configuracoes em icone-only no canto superior direito, com estado ativo quando a modal esta aberta
 - Colunas com visual elegante e separacao clara
 - Cards com comportamento de post-it:
   - cor personalizada pelo usuario
@@ -104,8 +118,9 @@ Cada card contem:
 
 1. Baixe ou clone este repositorio.
 2. Abra o arquivo `index.html` em um navegador baseado em Chromium (Chrome ou Edge).
-3. Na primeira abertura, clique em **Selecionar Diretorio** e escolha uma pasta local.
-4. Os cards de exemplo serao criados automaticamente e salvos nessa pasta.
+3. Na primeira abertura, confirme o alerta de diretorio e abra Configuracoes.
+4. Clique em **Selecionar Diretorio** e escolha uma pasta local para os dados.
+5. O board inicia vazio e passa a salvar os cards no diretorio selecionado.
 
 Opcionalmente, use uma extensao como Live Server para recarregamento automatico durante o desenvolvimento.
 
@@ -123,17 +138,10 @@ O projeto esta preparado para funcionar como aplicativo instalavel.
 - Em ambiente local sem HTTPS, alguns navegadores podem limitar a instalacao.
 - O service worker faz cache dos arquivos principais para abertura recorrente e suporte offline parcial.
 
-## Dados iniciais (mock)
+## Dados iniciais
 
-Ao configurar o diretorio pela primeira vez (sem dados previos), o board carrega cards de exemplo:
-
-- Criar tela de login
-- Integrar API de pagamento
-- Ajustar responsividade mobile
-- Configurar pipeline CI/CD
-- Documentar regras de negocio
-
-Esses dados sao salvos imediatamente no arquivo local.
+Ao configurar o diretorio pela primeira vez (sem dados previos), o board inicia sem cards.
+Os cards sao criados manualmente pelo usuario e salvos imediatamente no arquivo local.
 
 ## Arquitetura
 
@@ -152,4 +160,6 @@ Esses dados sao salvos imediatamente no arquivo local.
 
 ## Licenca
 
-Uso livre para fins de estudo, adaptacao e apresentacao de portifolio.
+Uso livre para fins de estudo, adaptação e apresentação em portfólio.
+Proprietário: José Leandro (JL).
+

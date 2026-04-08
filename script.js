@@ -46,59 +46,14 @@
     "var(--postit-lilac)": "#e3d7ff",
   };
 
-  const mockCards = [
-    {
-      title: "Criar tela de login",
-      description: "Definir estrutura, validacao de campos e fluxo de recuperacao de senha.",
-      assignee: "Ana Silva",
-      priority: "alta",
-      dueDate: "2026-04-14",
-      tag: "Frontend",
-      status: "todo",
-    },
-    {
-      title: "Integrar API de pagamento",
-      description: "Conectar endpoint de checkout com tratamento de erros e logs de falha.",
-      assignee: "Carlos Mendes",
-      priority: "alta",
-      dueDate: "2026-04-18",
-      tag: "Backend",
-      status: "progress",
-    },
-    {
-      title: "Ajustar responsividade mobile",
-      description: "Refinar grid de componentes para resolucoes menores e revisar legibilidade.",
-      assignee: "Julia Rocha",
-      priority: "media",
-      dueDate: "2026-04-11",
-      tag: "UX",
-      status: "review",
-    },
-    {
-      title: "Configurar pipeline CI/CD",
-      description: "Automatizar lint, testes e deploy para ambiente de homologacao.",
-      assignee: "Pedro Alves",
-      priority: "media",
-      dueDate: "2026-04-20",
-      tag: "DevOps",
-      status: "backlog",
-    },
-    {
-      title: "Documentar regras de negocio",
-      description: "Atualizar wiki com criterios de aceite, fluxos e politicas de aprovacao.",
-      assignee: "Ana Silva",
-      priority: "baixa",
-      dueDate: "2026-04-23",
-      tag: "Documentacao",
-      status: "done",
-    },
-  ];
+  const mockCards = [];
 
   const state = {
     cards: [],
     storageReady: false,
     filters: {
       search: "",
+      date: "",
       priority: "all",
       assignee: "all",
       sortBy: "updated_desc",
@@ -118,14 +73,20 @@
     },
     counters: document.querySelectorAll("[data-counter]"),
     searchInput: document.querySelector("#searchInput"),
+    dateFilter: document.querySelector("#dateFilter"),
     priorityFilter: document.querySelector("#priorityFilter"),
     assigneeFilter: document.querySelector("#assigneeFilter"),
     sortBy: document.querySelector("#sortBy"),
     newCardButton: document.querySelector("#newCardButton"),
     installAppButton: document.querySelector("#installAppButton"),
+    settingsButton: document.querySelector("#settingsButton"),
     backupButton: document.querySelector("#backupButton"),
     restoreSnapshotButton: document.querySelector("#restoreSnapshotButton"),
     modal: document.querySelector("#cardModal"),
+    settingsModal: document.querySelector("#settingsModal"),
+    closeSettingsButton: document.querySelector("#closeSettingsButton"),
+    directoryStatusDot: document.querySelector("#directoryStatusDot"),
+    directoryPathText: document.querySelector("#directoryPathText"),
     alertModal: document.querySelector("#alertModal"),
     alertTitle: document.querySelector("#alertTitle"),
     alertMessage: document.querySelector("#alertMessage"),
@@ -152,6 +113,7 @@
 
   let installPromptEvent = null;
   const alertQueue = [];
+  let currentAlert = null;
 
   function generateId() {
     return `card-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -521,8 +483,44 @@
     });
   }
 
+  function getDirectoryDisplayName() {
+    if (!backupManager.directoryHandle) {
+      return "Nenhum diretório selecionado.";
+    }
+
+    return backupManager.directoryHandle.name || "Diretório selecionado";
+  }
+
+  function openSettingsModal() {
+    if (!refs.settingsModal) return;
+
+    refs.settingsModal.showModal();
+    refs.settingsButton?.classList.add("is-active");
+    refs.settingsButton?.setAttribute("aria-expanded", "true");
+  }
+
+  function closeSettingsModal() {
+    if (refs.settingsModal?.open) {
+      refs.settingsModal.close();
+    }
+
+    refs.settingsButton?.classList.remove("is-active");
+    refs.settingsButton?.setAttribute("aria-expanded", "false");
+  }
+
   function updateBackupButtonState() {
     if (!refs.backupButton) return;
+
+    const hasActiveDirectory = Boolean(backupManager.directoryHandle);
+
+    if (refs.directoryPathText) {
+      refs.directoryPathText.textContent = getDirectoryDisplayName();
+    }
+
+    if (refs.directoryStatusDot) {
+      refs.directoryStatusDot.classList.toggle("settings-modal__dot--active", hasActiveDirectory);
+      refs.directoryStatusDot.classList.toggle("settings-modal__dot--inactive", !hasActiveDirectory);
+    }
 
     if (!isBackupSupported()) {
       refs.backupButton.disabled = true;
@@ -536,12 +534,12 @@
 
     refs.backupButton.disabled = false;
     refs.backupButton.title = "";
-    refs.backupButton.textContent = backupManager.directoryHandle
+    refs.backupButton.textContent = hasActiveDirectory
       ? "Diretorio Ativo"
       : "Selecionar Diretorio";
 
     if (refs.restoreSnapshotButton) {
-      refs.restoreSnapshotButton.disabled = !backupManager.directoryHandle;
+      refs.restoreSnapshotButton.disabled = !hasActiveDirectory;
     }
   }
 
@@ -590,13 +588,43 @@
 
   function matchesFilters(card) {
     const search = state.filters.search.toLowerCase().trim();
+    const dateFilter = state.filters.date;
     const matchesSearch = !search || toSearchable(card).includes(search);
+    const matchesDate =
+      !dateFilter ||
+      card.dueDate === dateFilter ||
+      card.createdAt?.slice(0, 10) === dateFilter ||
+      card.completedAt?.slice(0, 10) === dateFilter;
     const matchesPriority =
       state.filters.priority === "all" || card.priority === state.filters.priority;
     const matchesAssignee =
       state.filters.assignee === "all" || card.assignee === state.filters.assignee;
 
-    return matchesSearch && matchesPriority && matchesAssignee;
+    return matchesSearch && matchesDate && matchesPriority && matchesAssignee;
+  }
+
+  function sortBacklogCards(cards) {
+    return [...cards].sort((a, b) => {
+      const byPriority = PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
+      if (byPriority !== 0) return byPriority;
+
+      const byDueDate = compareDates(a.dueDate, b.dueDate);
+      if (byDueDate !== 0) return byDueDate;
+
+      const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+      return bTime - aTime;
+    });
+  }
+
+  function keepLatestDoneCards(cards, limit = 30) {
+    const sortedByRecent = [...cards].sort((a, b) => {
+      const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    return sortedByRecent.slice(0, limit);
   }
 
   function compareDates(dateA, dateB) {
@@ -744,15 +772,38 @@
     }
 
     const filteredCards = sortCards(state.cards.filter(matchesFilters));
+    const hasActiveSearch = Boolean(state.filters.search.trim() || state.filters.date);
+    const cardsByStatus = {
+      backlog: [],
+      todo: [],
+      progress: [],
+      review: [],
+      done: [],
+    };
 
     Object.values(refs.lists).forEach((list) => {
       list.innerHTML = "";
     });
 
     filteredCards.forEach((card) => {
-      const list = refs.lists[card.status];
+      if (cardsByStatus[card.status]) {
+        cardsByStatus[card.status].push(card);
+      }
+    });
+
+    cardsByStatus.backlog = sortBacklogCards(cardsByStatus.backlog);
+
+    if (!hasActiveSearch) {
+      cardsByStatus.done = keepLatestDoneCards(cardsByStatus.done, 30);
+    }
+
+    Object.entries(cardsByStatus).forEach(([status, cards]) => {
+      const list = refs.lists[status];
       if (!list) return;
-      list.append(createCardElement(card));
+
+      cards.forEach((card) => {
+        list.append(createCardElement(card));
+      });
     });
 
     Object.values(refs.lists).forEach((list) => {
@@ -803,6 +854,7 @@
     }
 
     const nextAlert = alertQueue.shift();
+    currentAlert = nextAlert;
     const titleByType = {
       success: "Sucesso",
       error: "Atenção",
@@ -830,8 +882,29 @@
     }
   }
 
-  function showToast(message, type = "success", confirmLabel = "", hideClose = false) {
-    alertQueue.push({ message, type, confirmLabel, hideClose });
+  function confirmAlertModal() {
+    const onConfirm = currentAlert?.onConfirm;
+    closeAlertModal();
+
+    if (typeof onConfirm === "function") {
+      setTimeout(() => {
+        try {
+          onConfirm();
+        } catch (error) {
+          console.error("Erro ao executar acao de confirmacao do alerta:", error);
+        }
+      }, 0);
+    }
+  }
+
+  function showToast(
+    message,
+    type = "success",
+    confirmLabel = "",
+    hideClose = false,
+    onConfirm = null
+  ) {
+    alertQueue.push({ message, type, confirmLabel, hideClose, onConfirm });
     openNextAlert();
   }
 
@@ -845,20 +918,14 @@
 
     state.cards = state.cards.filter((item) => item.id !== cardId);
 
-    let persisted = true;
-
     try {
       await cardRepository.save(state.cards);
     } catch (error) {
-      persisted = false;
       console.error("Erro ao salvar exclusao:", error);
       showToast("Falha ao salvar no diretorio local.", "error");
     }
 
     renderBoard();
-    if (persisted) {
-      showToast(`Card "${card.title}" removido.`, "success", "Ok", true);
-    }
   }
 
   function editCard(cardId) {
@@ -877,20 +944,15 @@
     card.status = newStatus;
     card.completedAt = resolveCompletedAt(previousStatus, newStatus, card.completedAt, nowIso);
     card.updatedAt = nowIso;
-    let persisted = true;
 
     try {
       await cardRepository.save(state.cards);
     } catch (error) {
-      persisted = false;
       console.error("Erro ao salvar mudanca de status:", error);
       showToast("Falha ao salvar no diretorio local.", "error");
     }
 
     renderBoard();
-    if (persisted) {
-      showToast(`Card movido para ${STATUS[newStatus]}.`);
-    }
   }
 
   async function handleFormSubmit(event) {
@@ -1079,13 +1141,15 @@
 
   function attachEvents() {
     refs.newCardButton.addEventListener("click", () => openModal("create"));
+    refs.settingsButton?.addEventListener("click", openSettingsModal);
     refs.closeModalButton.addEventListener("click", closeModal);
+    refs.closeSettingsButton?.addEventListener("click", closeSettingsModal);
     refs.cancelModalButton.addEventListener("click", closeModal);
     refs.form.addEventListener("submit", (event) => {
       handleFormSubmit(event);
     });
 
-    refs.alertOkButton?.addEventListener("click", closeAlertModal);
+    refs.alertOkButton?.addEventListener("click", confirmAlertModal);
     refs.alertCloseButton?.addEventListener("click", closeAlertModal);
 
     refs.alertModal?.addEventListener("click", (event) => {
@@ -1102,6 +1166,7 @@
     });
 
     refs.alertModal?.addEventListener("close", () => {
+      currentAlert = null;
       openNextAlert();
     });
 
@@ -1118,8 +1183,26 @@
       }
     });
 
+    refs.settingsModal?.addEventListener("click", (event) => {
+      const bounds = refs.settingsModal.getBoundingClientRect();
+      const clickedOutside =
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom;
+
+      if (clickedOutside) {
+        closeSettingsModal();
+      }
+    });
+
     refs.searchInput.addEventListener("input", (event) => {
       state.filters.search = event.target.value;
+      renderBoard();
+    });
+
+    refs.dateFilter.addEventListener("change", (event) => {
+      state.filters.date = event.target.value;
       renderBoard();
     });
 
@@ -1191,6 +1274,7 @@
     refs.interactive = [
       refs.newCardButton,
       refs.searchInput,
+      refs.dateFilter,
       refs.priorityFilter,
       refs.assigneeFilter,
       refs.sortBy,
@@ -1205,14 +1289,25 @@
     if (backupManager.directoryHandle) {
       try {
         await loadCardsFromDirectory();
-        showToast("Cards carregados do diretorio local.");
       } catch (error) {
         console.error("Erro ao carregar cards do diretorio local:", error);
         setStorageReady(false);
-        showToast("Falha ao carregar dados do diretorio local.", "error");
+        showToast(
+          "Selecione um diretório para carregar os dados.",
+          "info",
+          "Selecionar diretório",
+          true,
+          openSettingsModal
+        );
       }
     } else {
-      showToast("Selecione um diretorio local para usar o Kanban.", "error");
+      showToast(
+        "Selecione um diretório para carregar os dados.",
+        "info",
+        "Selecionar diretório",
+        true,
+        openSettingsModal
+      );
     }
 
     renderBoard();
