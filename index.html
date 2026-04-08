@@ -26,51 +26,63 @@
         </div>
 
         <div class="topbar__actions">
-          <label class="field field--search" for="searchInput">
-            <span class="field__label">Buscar</span>
-            <input
-              id="searchInput"
-              type="search"
-              placeholder="Pesquisar por título, tag ou descrição"
-              autocomplete="off"
-            />
-          </label>
+          <div class="topbar__filters">
+            <label class="field field--search" for="searchInput">
+              <span class="field__label">Buscar</span>
+              <input
+                id="searchInput"
+                type="search"
+                placeholder="Pesquisar por título, tag ou descrição"
+                autocomplete="off"
+              />
+            </label>
 
-          <label class="field" for="priorityFilter">
-            <span class="field__label">Prioridade</span>
-            <select id="priorityFilter">
-              <option value="all">Todas</option>
-              <option value="baixa">Baixa</option>
-              <option value="media">Média</option>
-              <option value="alta">Alta</option>
-            </select>
-          </label>
+            <label class="field" for="priorityFilter">
+              <span class="field__label">Prioridade</span>
+              <select id="priorityFilter">
+                <option value="all">Todas</option>
+                <option value="baixa">Baixa</option>
+                <option value="media">Média</option>
+                <option value="alta">Alta</option>
+              </select>
+            </label>
 
-          <label class="field" for="assigneeFilter">
-            <span class="field__label">Responsável</span>
-            <select id="assigneeFilter">
-              <option value="all">Todos</option>
-            </select>
-          </label>
+            <label class="field" for="assigneeFilter">
+              <span class="field__label">Responsável</span>
+              <select id="assigneeFilter">
+                <option value="all">Todos</option>
+              </select>
+            </label>
 
-          <label class="field" for="sortBy">
-            <span class="field__label">Ordenar por</span>
-            <select id="sortBy">
-              <option value="updated_desc">Mais recente</option>
-              <option value="priority_desc">Prioridade (alta para baixa)</option>
-              <option value="priority_asc">Prioridade (baixa para alta)</option>
-              <option value="due_asc">Prazo (mais próximo)</option>
-              <option value="due_desc">Prazo (mais distante)</option>
-            </select>
-          </label>
+            <label class="field" for="sortBy">
+              <span class="field__label">Ordenar por</span>
+              <select id="sortBy">
+                <option value="updated_desc">Mais recente</option>
+                <option value="priority_desc">Prioridade (alta para baixa)</option>
+                <option value="priority_asc">Prioridade (baixa para alta)</option>
+                <option value="due_asc">Prazo (mais próximo)</option>
+                <option value="due_desc">Prazo (mais distante)</option>
+              </select>
+            </label>
+          </div>
 
-          <button id="newCardButton" class="btn btn--primary" type="button">
-            Novo Card
-          </button>
+          <div class="topbar__buttons">
+            <button id="newCardButton" class="btn btn--primary" type="button">
+              Novo Card
+            </button>
 
-          <button id="installAppButton" class="btn btn--secondary u-hidden" type="button">
-            Instalar App
-          </button>
+            <button id="installAppButton" class="btn btn--secondary u-hidden" type="button">
+              Instalar App
+            </button>
+
+            <button id="backupButton" class="btn btn--secondary" type="button">
+              Selecionar Diretório
+            </button>
+
+            <button id="restoreSnapshotButton" class="btn btn--secondary" type="button">
+              Restaurar Último
+            </button>
+          </div>
         </div>
       </header>
 
@@ -204,7 +216,25 @@
       </form>
     </dialog>
 
-    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+    <dialog id="alertModal" class="alert-modal" aria-label="Alerta do sistema">
+      <article class="alert-modal__content" role="alertdialog" aria-modal="true" aria-labelledby="alertTitle">
+        <header class="alert-modal__header">
+          <div class="alert-modal__title-group">
+            <span id="alertBadge" class="alert-modal__badge" aria-hidden="true">!</span>
+            <h3 id="alertTitle">Alerta</h3>
+          </div>
+          <button id="alertCloseButton" type="button" class="btn btn--ghost" aria-label="Fechar alerta">
+            Fechar
+          </button>
+        </header>
+
+        <p id="alertMessage" class="alert-modal__message"></p>
+
+        <footer class="alert-modal__footer">
+          <button id="alertOkButton" type="button" class="btn btn--primary">Entendi</button>
+        </footer>
+      </article>
+    </dialog>
 
     <script src="script.js"></script>
   </body>

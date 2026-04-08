@@ -1,6 +1,12 @@
 (() => {
-  const STORAGE_KEY = "kanban-project-control-v1";
+  const LEGACY_STORAGE_KEY = "kanban-project-control-v1";
   const LAST_COLOR_KEY = "kanban-last-postit-color-v1";
+  const BACKUP_DB_NAME = "kanban-backup-config-v1";
+  const BACKUP_DB_STORE = "settings";
+  const BACKUP_HANDLE_KEY = "backup-directory-handle";
+  const LEGACY_BACKUP_FILE_NAME = "kanban-backup.json";
+  const DATA_FILE_NAME = "kanban-data.json";
+  const HISTORY_DIR_NAME = "history";
 
   const STATUS = {
     backlog: "Backlog",
@@ -90,6 +96,7 @@
 
   const state = {
     cards: [],
+    storageReady: false,
     filters: {
       search: "",
       priority: "all",
@@ -116,13 +123,20 @@
     sortBy: document.querySelector("#sortBy"),
     newCardButton: document.querySelector("#newCardButton"),
     installAppButton: document.querySelector("#installAppButton"),
+    backupButton: document.querySelector("#backupButton"),
+    restoreSnapshotButton: document.querySelector("#restoreSnapshotButton"),
     modal: document.querySelector("#cardModal"),
+    alertModal: document.querySelector("#alertModal"),
+    alertTitle: document.querySelector("#alertTitle"),
+    alertMessage: document.querySelector("#alertMessage"),
+    alertBadge: document.querySelector("#alertBadge"),
+    alertCloseButton: document.querySelector("#alertCloseButton"),
+    alertOkButton: document.querySelector("#alertOkButton"),
     modalTitle: document.querySelector("#modalTitle"),
     saveCardButton: document.querySelector("#saveCardButton"),
     closeModalButton: document.querySelector("#closeModalButton"),
     cancelModalButton: document.querySelector("#cancelModalButton"),
     form: document.querySelector("#cardForm"),
-    toastContainer: document.querySelector("#toastContainer"),
     fields: {
       title: document.querySelector("#titleInput"),
       description: document.querySelector("#descriptionInput"),
@@ -133,9 +147,11 @@
       status: document.querySelector("#statusInput"),
       postItColor: document.querySelector("#colorInput"),
     },
+    interactive: [],
   };
 
   let installPromptEvent = null;
+  const alertQueue = [];
 
   function generateId() {
     return `card-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -171,6 +187,10 @@
   }
 
   function normalizeCard(card) {
+    const nowIso = new Date().toISOString();
+    const createdAt = card.createdAt || nowIso;
+    const updatedAt = card.updatedAt || createdAt;
+
     return {
       id: card.id || generateId(),
       title: card.title?.trim() || "",
@@ -182,39 +202,386 @@
       status: card.status || "backlog",
       postItColor: card.postItColor || pickPostItColor(),
       rotation: 0,
-      createdAt: card.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt,
+      completedAt:
+        card.completedAt || ((card.status || "backlog") === "done" ? updatedAt : ""),
+      updatedAt,
     };
   }
 
-  const cardRepository = {
-    load() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) {
-          return mockCards.map((card) => normalizeCard(card));
-        }
+  function isBackupSupported() {
+    return typeof window.showDirectoryPicker === "function" && "indexedDB" in window;
+  }
 
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) {
-          return mockCards.map((card) => normalizeCard(card));
-        }
+  function openBackupDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(BACKUP_DB_NAME, 1);
 
-        return parsed.map((card) => normalizeCard(card));
-      } catch (error) {
-        console.error("Erro ao carregar dados:", error);
-        return mockCards.map((card) => normalizeCard(card));
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(BACKUP_DB_STORE)) {
+          db.createObjectStore(BACKUP_DB_STORE);
+        }
+      };
+
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+    });
+  }
+
+  async function getStoredBackupDirectoryHandle() {
+    try {
+      const db = await openBackupDb();
+
+      return await new Promise((resolve, reject) => {
+        const transaction = db.transaction(BACKUP_DB_STORE, "readonly");
+        const store = transaction.objectStore(BACKUP_DB_STORE);
+        const request = store.get(BACKUP_HANDLE_KEY);
+
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+
+        request.onerror = () => {
+          reject(request.error);
+        };
+      });
+    } catch (error) {
+      console.error("Erro ao carregar configuracao de backup:", error);
+      return null;
+    }
+  }
+
+  async function saveBackupDirectoryHandle(handle) {
+    const db = await openBackupDb();
+
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction(BACKUP_DB_STORE, "readwrite");
+      const store = transaction.objectStore(BACKUP_DB_STORE);
+      const request = store.put(handle, BACKUP_HANDLE_KEY);
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+    });
+  }
+
+  async function ensureDirectoryPermission(handle, mode = "read") {
+    if (!handle) return false;
+
+    try {
+      if (typeof handle.queryPermission === "function") {
+        const permission = await handle.queryPermission({ mode });
+        if (permission === "granted") {
+          return true;
+        }
       }
+
+      if (typeof handle.requestPermission === "function") {
+        const permission = await handle.requestPermission({ mode });
+        return permission === "granted";
+      }
+    } catch (error) {
+      console.error("Erro ao validar permissao de backup:", error);
+      return false;
+    }
+
+    return false;
+  }
+
+  async function readCardsFromBackupFile(dirHandle) {
+    const parseCards = (content) => {
+      const parsed = JSON.parse(content);
+
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+
+      if (Array.isArray(parsed?.cards)) {
+        return parsed.cards;
+      }
+
+      return [];
+    };
+
+    try {
+      const fileHandle = await dirHandle.getFileHandle(DATA_FILE_NAME);
+      const file = await fileHandle.getFile();
+      const content = await file.text();
+      return parseCards(content);
+    } catch (error) {
+      if (error?.name !== "NotFoundError") {
+        throw error;
+      }
+
+      const legacyFileHandle = await dirHandle.getFileHandle(LEGACY_BACKUP_FILE_NAME);
+      const legacyFile = await legacyFileHandle.getFile();
+      const legacyContent = await legacyFile.text();
+      return parseCards(legacyContent);
+    }
+  }
+
+  const backupManager = {
+    directoryHandle: null,
+
+    async init() {
+      if (!isBackupSupported()) {
+        return;
+      }
+
+      this.directoryHandle = await getStoredBackupDirectoryHandle();
     },
-    save(cards) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+
+    async configureDirectory() {
+      if (!isBackupSupported()) {
+        throw new Error("Backup local nao suportado neste navegador.");
+      }
+
+      const handle = await window.showDirectoryPicker({
+        id: "kanban-backup-directory",
+        mode: "readwrite",
+      });
+
+      const hasPermission = await ensureDirectoryPermission(handle, "readwrite");
+      if (!hasPermission) {
+        throw new Error("Permissao de escrita negada para pasta de backup.");
+      }
+
+      this.directoryHandle = handle;
+      await saveBackupDirectoryHandle(handle);
+    },
+
+    async sync(cards) {
+      if (!this.directoryHandle) {
+        return;
+      }
+
+      const hasPermission = await ensureDirectoryPermission(this.directoryHandle, "readwrite");
+      if (!hasPermission) {
+        return;
+      }
+
+      const fileHandle = await this.directoryHandle.getFileHandle(DATA_FILE_NAME, {
+        create: true,
+      });
+      const writable = await fileHandle.createWritable();
+      const payload = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        cards,
+      };
+
+      await writable.write(JSON.stringify(payload, null, 2));
+      await writable.close();
+
+      const historyDirectory = await this.directoryHandle.getDirectoryHandle(HISTORY_DIR_NAME, {
+        create: true,
+      });
+      const historyFileName = `kanban-snapshot-${new Date()
+        .toISOString()
+        .replaceAll(":", "-")
+        .replaceAll(".", "-")}.json`;
+      const historyFileHandle = await historyDirectory.getFileHandle(historyFileName, {
+        create: true,
+      });
+      const historyWritable = await historyFileHandle.createWritable();
+      await historyWritable.write(JSON.stringify(payload, null, 2));
+      await historyWritable.close();
+    },
+
+    async readCards() {
+      if (!this.directoryHandle) {
+        throw new Error("Diretorio de dados nao configurado.");
+      }
+
+      const hasReadPermission = await ensureDirectoryPermission(this.directoryHandle, "read");
+      if (!hasReadPermission) {
+        throw new Error("Permissao de leitura negada para o diretorio de dados.");
+      }
+
+      return await readCardsFromBackupFile(this.directoryHandle);
+    },
+
+    async readLatestSnapshotCards() {
+      if (!this.directoryHandle) {
+        throw new Error("Diretorio de dados nao configurado.");
+      }
+
+      const hasReadPermission = await ensureDirectoryPermission(this.directoryHandle, "read");
+      if (!hasReadPermission) {
+        throw new Error("Permissao de leitura negada para o diretorio de dados.");
+      }
+
+      const historyDirectory = await this.directoryHandle.getDirectoryHandle(HISTORY_DIR_NAME);
+      const snapshotNames = [];
+
+      for await (const [entryName, entryHandle] of historyDirectory.entries()) {
+        if (entryHandle.kind !== "file") {
+          continue;
+        }
+
+        if (!entryName.startsWith("kanban-snapshot-") || !entryName.endsWith(".json")) {
+          continue;
+        }
+
+        snapshotNames.push(entryName);
+      }
+
+      if (!snapshotNames.length) {
+        throw new Error("Nenhum snapshot encontrado no historico.");
+      }
+
+      snapshotNames.sort((a, b) => b.localeCompare(a));
+      const latestSnapshotHandle = await historyDirectory.getFileHandle(snapshotNames[0]);
+      const latestSnapshotFile = await latestSnapshotHandle.getFile();
+      const content = await latestSnapshotFile.text();
+      const parsed = JSON.parse(content);
+
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+
+      if (Array.isArray(parsed?.cards)) {
+        return parsed.cards;
+      }
+
+      throw new Error("Snapshot invalido.");
     },
   };
+
+  const cardRepository = {
+    loadLegacyLocalStorage() {
+      try {
+        const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (!raw) return [];
+
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        console.error("Erro ao carregar dados legados:", error);
+        return [];
+      }
+    },
+    clearLegacyLocalStorage() {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    },
+    async load() {
+      if (!backupManager.directoryHandle) {
+        throw new Error("Diretorio de dados nao configurado.");
+      }
+
+      try {
+        const fromFile = await backupManager.readCards();
+        if (Array.isArray(fromFile)) {
+          return fromFile.map((card) => normalizeCard(card));
+        }
+      } catch (error) {
+        if (error?.name !== "NotFoundError") {
+          console.error("Erro ao carregar dados do diretorio local:", error);
+          throw error;
+        }
+      }
+
+      const legacyCards = this.loadLegacyLocalStorage();
+      if (legacyCards.length) {
+        const normalizedLegacyCards = legacyCards.map((card) => normalizeCard(card));
+        await this.save(normalizedLegacyCards);
+        this.clearLegacyLocalStorage();
+        return normalizedLegacyCards;
+      }
+
+      const initialCards = mockCards.map((card) => normalizeCard(card));
+      await this.save(initialCards);
+      return initialCards;
+    },
+    async save(cards) {
+      if (!backupManager.directoryHandle) {
+        throw new Error("Diretorio de dados nao configurado.");
+      }
+
+      await backupManager.sync(cards);
+    },
+  };
+
+  function setStorageReady(isReady) {
+    state.storageReady = isReady;
+
+    refs.interactive.forEach((element) => {
+      if (!element) return;
+      element.disabled = !isReady;
+    });
+  }
+
+  function updateBackupButtonState() {
+    if (!refs.backupButton) return;
+
+    if (!isBackupSupported()) {
+      refs.backupButton.disabled = true;
+      if (refs.restoreSnapshotButton) {
+        refs.restoreSnapshotButton.disabled = true;
+      }
+      refs.backupButton.textContent = "Backup indisponivel";
+      refs.backupButton.title = "Use um navegador baseado em Chromium para backup em pasta local.";
+      return;
+    }
+
+    refs.backupButton.disabled = false;
+    refs.backupButton.title = "";
+    refs.backupButton.textContent = backupManager.directoryHandle
+      ? "Diretorio Ativo"
+      : "Selecionar Diretorio";
+
+    if (refs.restoreSnapshotButton) {
+      refs.restoreSnapshotButton.disabled = !backupManager.directoryHandle;
+    }
+  }
+
+  async function loadCardsFromDirectory() {
+    const loadedCards = await cardRepository.load();
+    state.cards = loadedCards;
+    setStorageReady(true);
+  }
 
   function formatDate(dateValue) {
     if (!dateValue) return "-";
     const [year, month, day] = dateValue.split("-");
     return `${day}/${month}/${year}`;
+  }
+
+  function formatDateFromIso(dateValue) {
+    if (!dateValue) return "-";
+
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(parsed);
+  }
+
+  function resolveCompletedAt(previousStatus, nextStatus, currentCompletedAt, nowIso) {
+    if (previousStatus !== "done" && nextStatus === "done") {
+      return nowIso;
+    }
+
+    if (previousStatus === "done" && nextStatus !== "done") {
+      return "";
+    }
+
+    return currentCompletedAt || "";
   }
 
   function toSearchable(card) {
@@ -313,6 +680,12 @@
         <ul class="kanban-card__meta">
           <li><strong>Responsavel:</strong> ${escapeHTML(card.assignee)}</li>
           <li><strong>Prazo:</strong> ${formatDate(card.dueDate)}</li>
+          <li><strong>Criado em:</strong> ${formatDateFromIso(card.createdAt)}</li>
+          ${
+            card.completedAt
+              ? `<li><strong>Concluido em:</strong> ${formatDateFromIso(card.completedAt)}</li>`
+              : ""
+          }
           <li><strong>Tag:</strong> ${escapeHTML(card.tag)}</li>
         </ul>
 
@@ -332,7 +705,9 @@
   function renderEmptyState(listElement) {
     const empty = document.createElement("li");
     empty.className = "empty-state";
-    empty.textContent = "Nenhum card nesta visualizacao.";
+    empty.textContent = state.storageReady
+      ? "Nenhum card nesta visualizacao."
+      : "Selecione um diretorio local para carregar os cards.";
     listElement.append(empty);
   }
 
@@ -358,6 +733,16 @@
   }
 
   function renderBoard() {
+    if (!state.storageReady) {
+      Object.values(refs.lists).forEach((list) => {
+        list.innerHTML = "";
+        renderEmptyState(list);
+      });
+
+      updateCounters([]);
+      return;
+    }
+
     const filteredCards = sortCards(state.cards.filter(matchesFilters));
 
     Object.values(refs.lists).forEach((list) => {
@@ -412,29 +797,68 @@
     state.editingId = null;
   }
 
-  function showToast(message, type = "success") {
-    const toast = document.createElement("div");
-    toast.className = `toast toast--${type}`;
-    toast.textContent = message;
-    refs.toastContainer.append(toast);
+  function openNextAlert() {
+    if (!refs.alertModal || refs.alertModal.open || !alertQueue.length) {
+      return;
+    }
 
-    setTimeout(() => {
-      toast.remove();
-    }, 2200);
+    const nextAlert = alertQueue.shift();
+    const titleByType = {
+      success: "Sucesso",
+      error: "Atenção",
+      info: "Informação",
+    };
+    const badgeByType = {
+      success: "OK",
+      error: "!",
+      info: "i",
+    };
+
+    const alertType = titleByType[nextAlert.type] ? nextAlert.type : "info";
+    refs.alertModal.dataset.type = alertType;
+    refs.alertTitle.textContent = titleByType[alertType];
+    refs.alertBadge.textContent = badgeByType[alertType];
+    refs.alertMessage.textContent = nextAlert.message;
+    refs.alertOkButton.textContent = nextAlert.confirmLabel || "Entendi";
+    refs.alertCloseButton.classList.toggle("u-hidden", Boolean(nextAlert.hideClose));
+    refs.alertModal.showModal();
+  }
+
+  function closeAlertModal() {
+    if (refs.alertModal?.open) {
+      refs.alertModal.close();
+    }
+  }
+
+  function showToast(message, type = "success", confirmLabel = "", hideClose = false) {
+    alertQueue.push({ message, type, confirmLabel, hideClose });
+    openNextAlert();
   }
 
   function getCardById(cardId) {
     return state.cards.find((card) => card.id === cardId);
   }
 
-  function deleteCard(cardId) {
+  async function deleteCard(cardId) {
     const card = getCardById(cardId);
     if (!card) return;
 
     state.cards = state.cards.filter((item) => item.id !== cardId);
-    cardRepository.save(state.cards);
+
+    let persisted = true;
+
+    try {
+      await cardRepository.save(state.cards);
+    } catch (error) {
+      persisted = false;
+      console.error("Erro ao salvar exclusao:", error);
+      showToast("Falha ao salvar no diretorio local.", "error");
+    }
+
     renderBoard();
-    showToast(`Card \"${card.title}\" removido.`);
+    if (persisted) {
+      showToast(`Card "${card.title}" removido.`, "success", "Ok", true);
+    }
   }
 
   function editCard(cardId) {
@@ -443,18 +867,33 @@
     openModal("edit", card);
   }
 
-  function updateCardStatus(cardId, newStatus) {
+  async function updateCardStatus(cardId, newStatus) {
     const card = getCardById(cardId);
     if (!card || !STATUS[newStatus]) return;
 
+    const previousStatus = card.status;
+    const nowIso = new Date().toISOString();
+
     card.status = newStatus;
-    card.updatedAt = new Date().toISOString();
-    cardRepository.save(state.cards);
+    card.completedAt = resolveCompletedAt(previousStatus, newStatus, card.completedAt, nowIso);
+    card.updatedAt = nowIso;
+    let persisted = true;
+
+    try {
+      await cardRepository.save(state.cards);
+    } catch (error) {
+      persisted = false;
+      console.error("Erro ao salvar mudanca de status:", error);
+      showToast("Falha ao salvar no diretorio local.", "error");
+    }
+
     renderBoard();
-    showToast(`Card movido para ${STATUS[newStatus]}.`);
+    if (persisted) {
+      showToast(`Card movido para ${STATUS[newStatus]}.`);
+    }
   }
 
-  function handleFormSubmit(event) {
+  async function handleFormSubmit(event) {
     event.preventDefault();
 
     if (!refs.form.reportValidity()) return;
@@ -474,20 +913,39 @@
     payload.postItColor = toColorInputValue(payload.postItColor);
     saveLastPickedColor(payload.postItColor);
 
-    if (state.editingId) {
+    const isEditing = Boolean(state.editingId);
+
+    if (isEditing) {
       const card = getCardById(state.editingId);
       if (!card) return;
 
-      Object.assign(card, payload, { updatedAt: new Date().toISOString() });
-      showToast("Card atualizado com sucesso.");
+      const previousStatus = card.status;
+      const nowIso = new Date().toISOString();
+
+      Object.assign(card, payload, {
+        completedAt: resolveCompletedAt(previousStatus, payload.status, card.completedAt, nowIso),
+        updatedAt: nowIso,
+      });
     } else {
       state.cards.push(normalizeCard(payload));
-      showToast("Novo card criado.");
     }
 
-    cardRepository.save(state.cards);
+    let persisted = true;
+
+    try {
+      await cardRepository.save(state.cards);
+    } catch (error) {
+      persisted = false;
+      console.error("Erro ao salvar card:", error);
+      showToast("Falha ao salvar no diretorio local.", "error");
+    }
+
     renderBoard();
-    closeModal();
+
+    if (persisted) {
+      showToast(isEditing ? "Card atualizado com sucesso." : "Novo card criado.");
+      closeModal();
+    }
   }
 
   function handleBoardClick(event) {
@@ -623,7 +1081,29 @@
     refs.newCardButton.addEventListener("click", () => openModal("create"));
     refs.closeModalButton.addEventListener("click", closeModal);
     refs.cancelModalButton.addEventListener("click", closeModal);
-    refs.form.addEventListener("submit", handleFormSubmit);
+    refs.form.addEventListener("submit", (event) => {
+      handleFormSubmit(event);
+    });
+
+    refs.alertOkButton?.addEventListener("click", closeAlertModal);
+    refs.alertCloseButton?.addEventListener("click", closeAlertModal);
+
+    refs.alertModal?.addEventListener("click", (event) => {
+      const bounds = refs.alertModal.getBoundingClientRect();
+      const clickedOutside =
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom;
+
+      if (clickedOutside) {
+        closeAlertModal();
+      }
+    });
+
+    refs.alertModal?.addEventListener("close", () => {
+      openNextAlert();
+    });
 
     refs.modal.addEventListener("click", (event) => {
       const bounds = refs.modal.getBoundingClientRect();
@@ -658,6 +1138,48 @@
       renderBoard();
     });
 
+    refs.backupButton?.addEventListener("click", async () => {
+      if (!isBackupSupported()) {
+        showToast("Diretorio local nao e suportado neste navegador.", "error");
+        return;
+      }
+
+      try {
+        await backupManager.configureDirectory();
+        await loadCardsFromDirectory();
+        updateBackupButtonState();
+        renderBoard();
+        showToast("Diretorio local configurado com sucesso.");
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          return;
+        }
+
+        console.error("Erro ao configurar backup:", error);
+        showToast("Nao foi possivel configurar o diretorio local.", "error");
+      }
+    });
+
+    refs.restoreSnapshotButton?.addEventListener("click", async () => {
+      if (!backupManager.directoryHandle) {
+        showToast("Selecione um diretorio local antes de restaurar.", "error");
+        return;
+      }
+
+      try {
+        const snapshotCards = await backupManager.readLatestSnapshotCards();
+        const normalizedCards = snapshotCards.map((card) => normalizeCard(card));
+        state.cards = normalizedCards;
+        await cardRepository.save(state.cards);
+        setStorageReady(true);
+        renderBoard();
+        showToast("Ultimo snapshot restaurado com sucesso.");
+      } catch (error) {
+        console.error("Erro ao restaurar snapshot:", error);
+        showToast("Nao foi possivel restaurar o ultimo snapshot.", "error");
+      }
+    });
+
     refs.board.addEventListener("click", handleBoardClick);
     refs.board.addEventListener("dragstart", handleDragStart);
     refs.board.addEventListener("dragend", handleDragEnd);
@@ -665,10 +1187,34 @@
     bindDropZones();
   }
 
-  function init() {
-    state.cards = cardRepository.load();
+  async function init() {
+    refs.interactive = [
+      refs.newCardButton,
+      refs.searchInput,
+      refs.priorityFilter,
+      refs.assigneeFilter,
+      refs.sortBy,
+    ];
+
+    setStorageReady(false);
+    await backupManager.init();
+    updateBackupButtonState();
     attachEvents();
     setupPwa();
+
+    if (backupManager.directoryHandle) {
+      try {
+        await loadCardsFromDirectory();
+        showToast("Cards carregados do diretorio local.");
+      } catch (error) {
+        console.error("Erro ao carregar cards do diretorio local:", error);
+        setStorageReady(false);
+        showToast("Falha ao carregar dados do diretorio local.", "error");
+      }
+    } else {
+      showToast("Selecione um diretorio local para usar o Kanban.", "error");
+    }
+
     renderBoard();
   }
 
