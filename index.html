@@ -349,6 +349,19 @@
       </form>
     </dialog>
 
+    <dialog id="timeLogModal" class="modal" aria-label="Histórico de tempo do card">
+      <section class="modal__content time-log-modal__content" method="dialog">
+        <header class="modal__header">
+          <h3 id="timeLogModalTitle">Histórico de Tempo</h3>
+          <button type="button" id="closeTimeLogModalButton" class="btn btn--ghost" aria-label="Fechar histórico de tempo">
+            Fechar
+          </button>
+        </header>
+
+        <div id="timeLogModalBody" class="time-log-modal__body"></div>
+      </section>
+    </dialog>
+
     <div id="successToastStack" class="success-toast-stack" aria-live="polite" aria-atomic="false"></div>
 
     <script src="script.js"></script>

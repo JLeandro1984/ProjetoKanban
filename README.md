@@ -18,8 +18,18 @@ A tela conta com cinco colunas padrao de fluxo de trabalho, filtros dinamicos, o
 - Header com busca global e filtros
 - Criacao, edicao e exclusao de cards via modal
 - Drag-and-drop entre colunas
+- Acoes por icone no card (tempo, observacao, editar e excluir)
 - Contador automatico de cards por coluna
 - Filtro por texto, data, prioridade e responsavel
+- Controle de tempo profissional por movimentacao de card:
+  - Inicia ciclo ao entrar em "Em Andamento" e "Em Revisao"
+  - Encerra ciclo ao sair desses status
+  - Acumula multiplas passagens entre andamento/revisao
+  - Exibe total acumulado no historico
+- Pausa e retomada de tempo por card (icone no topo, alinhado a direita):
+  - Pausar fecha o ciclo atual com data/hora final
+  - Retomar abre novo ciclo com nova data/hora inicial
+- Historico de tempo em modal dedicada (inicio, fim, status e duracao)
 - Destaque inteligente de prazo nos cards:
   - Estado "Vencido" para cards atrasados
   - Estado de alerta para cards que vencem em breve
@@ -86,6 +96,10 @@ O app agora funciona imediatamente, mesmo sem diretorio externo configurado:
 - **Seamless**: Ao ativar diretorio depois, dados locais sao sincronizados
 - Mensagens contextuas informam modo ativo (Local vs Sincronizado)
 
+**Importante sobre o historico de tempo**:
+- O historico de tempo **nao** e salvo em localStorage
+- O historico e persistido em arquivo dedicado na pasta local escolhida: `log-tempo/time-log.json`
+
 **Beneficio**: Usuarios podem criar cards imediatamente e configurar backup depois.
 
 ### Ajustes Visuais no Dark Mode
@@ -97,9 +111,10 @@ O app agora funciona imediatamente, mesmo sem diretorio externo configurado:
 
 ### Persistencia em diretorio local
 
-O app nao usa localStorage para os dados dos cards. Na primeira utilizacao, e obrigatorio selecionar uma pasta local onde os dados serao gravados.
+Ao configurar um diretorio local, os dados passam a ser persistidos em arquivos dentro da pasta escolhida.
 
 - Os cards sao lidos e salvos diretamente no arquivo `kanban-data.json` dentro da pasta escolhida
+- O historico de tempo e salvo separadamente em `log-tempo/time-log.json`
 - A cada alteracao, um snapshot e criado automaticamente em uma subpasta `history/`
 - O diretorio configurado e lembrado entre sessoes (via IndexedDB)
 - Dados legados do localStorage sao migrados automaticamente na primeira abertura com diretorio configurado
@@ -145,9 +160,13 @@ Cada card contem:
 - Cor personalizada
 - Seletor rapido com 6 cores classicas de post-it e opcao de cor livre
 - Coluna de destino
-- Observacao opcional (icone dedicado no card, com modal exclusiva para adicionar/visualizar/editar)
+- Observacao opcional com dois estados visuais no icone:
+  - Sem observacao: icone outline (vazio)
+  - Com observacao: icone preenchido
 - Data de criacao (automatica)
 - Data e hora de conclusao (automatica, exibida apenas na coluna "Concluido")
+- Historico de tempo por card (multiplos ciclos)
+- Pausa/retomada de tempo por card
 
 ## Estilo visual
 
@@ -164,8 +183,9 @@ Cada card contem:
   - dobra no canto inferior
   - textura leve de papel
 - Acao de observacao por card:
-  - icone com estado "sem observacao" e "com observacao"
+  - icone outline quando vazio e preenchido quando ha conteudo
   - modal exclusiva para edicao da observacao
+- Acao de pausa/retomada no topo do card, alinhada a direita
 - Animacoes suaves de hover e arraste
 - Notificacoes com dois niveis:
   - toast de sucesso com fade-in/fade-out e auto-fechamento
@@ -183,6 +203,7 @@ Cada card contem:
 ### Arquivos gerados em execucao (na pasta escolhida pelo usuario)
 
 - `kanban-data.json` — dados atuais dos cards
+- `log-tempo/time-log.json` — historico de tempo por card
 - `history/kanban-snapshot-<timestamp>.json` — historico de snapshots automaticos
 
 ## Como executar

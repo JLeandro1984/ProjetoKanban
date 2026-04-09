@@ -10,6 +10,8 @@
   const LEGACY_BACKUP_FILE_NAME = "kanban-backup.json";
   const DATA_FILE_NAME = "kanban-data.json";
   const HISTORY_DIR_NAME = "history";
+  const TIME_LOG_DIR_NAME = "log-tempo";
+  const TIME_LOG_FILE_NAME = "time-log.json";
 
   const STATUS = {
     backlog: "Backlog",
@@ -17,6 +19,12 @@
     progress: "Em Andamento",
     review: "Em Revisao",
     done: "Concluido",
+  };
+
+  // ====== TIME TRACKING CONSTANTS ======
+  const TIME_TRACKED_STATUSES = {
+    progress: "Em Andamento",
+    review: "Em Revisao",
   };
 
   const PRIORITY_LABEL = {
@@ -119,6 +127,10 @@
     closeNoteModalButton: document.querySelector("#closeNoteModalButton"),
     saveNoteButton: document.querySelector("#saveNoteButton"),
     clearNoteButton: document.querySelector("#clearNoteButton"),
+    timeLogModal: document.querySelector("#timeLogModal"),
+    timeLogModalTitle: document.querySelector("#timeLogModalTitle"),
+    timeLogModalBody: document.querySelector("#timeLogModalBody"),
+    closeTimeLogModalButton: document.querySelector("#closeTimeLogModalButton"),
     successToastStack: document.querySelector("#successToastStack"),
     modalTitle: document.querySelector("#modalTitle"),
     saveCardButton: document.querySelector("#saveCardButton"),
@@ -287,6 +299,11 @@
     const createdAt = card.createdAt || nowIso;
     const updatedAt = card.updatedAt || createdAt;
 
+    // Time log normalized as array of {status, start, end, duration}
+    const timeLogs = Array.isArray(card.timeLogs)
+      ? card.timeLogs.filter((log) => log && typeof log === "object")
+      : [];
+
     return {
       id: card.id || generateId(),
       title: card.title?.trim() || "",
@@ -298,12 +315,82 @@
       status: card.status || "backlog",
       postItColor: card.postItColor || pickPostItColor(),
       note: card.note?.trim() || "",
+      timeLogs,
       rotation: 0,
       createdAt,
       completedAt:
         card.completedAt || ((card.status || "backlog") === "done" ? updatedAt : ""),
       updatedAt,
     };
+  }
+
+  function normalizeTimeLogEntry(log) {
+    if (!log || typeof log !== "object") return null;
+
+    const status = typeof log.status === "string" ? log.status : "";
+    const start = typeof log.start === "string" ? log.start : "";
+    const end = typeof log.end === "string" ? log.end : "";
+    const duration = Number.isFinite(Number(log.duration)) ? Math.max(0, Number(log.duration)) : 0;
+
+    if (!status || !start) {
+      return null;
+    }
+
+    return {
+      status,
+      start,
+      end,
+      duration,
+    };
+  }
+
+  function stripTimeLogsFromCards(cards) {
+    return cards.map((card) => {
+      const { timeLogs, ...cardWithoutTimeLogs } = card;
+      return cardWithoutTimeLogs;
+    });
+  }
+
+  function buildTimeLogPayload(cards) {
+    const records = cards
+      .map((card) => {
+        const timeLogs = Array.isArray(card.timeLogs)
+          ? card.timeLogs.map((entry) => normalizeTimeLogEntry(entry)).filter(Boolean)
+          : [];
+
+        return {
+          cardId: card.id,
+          timeLogs,
+        };
+      })
+      .filter((record) => record.cardId && record.timeLogs.length > 0);
+
+    return {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      records,
+    };
+  }
+
+  function applyTimeLogPayload(cards, payload) {
+    const timeLogsByCardId = new Map();
+
+    if (Array.isArray(payload?.records)) {
+      payload.records.forEach((record) => {
+        if (!record?.cardId) return;
+
+        const normalizedLogs = Array.isArray(record.timeLogs)
+          ? record.timeLogs.map((entry) => normalizeTimeLogEntry(entry)).filter(Boolean)
+          : [];
+
+        timeLogsByCardId.set(record.cardId, normalizedLogs);
+      });
+    }
+
+    return cards.map((card) => ({
+      ...card,
+      timeLogs: timeLogsByCardId.get(card.id) || [],
+    }));
   }
 
   function isBackupSupported() {
@@ -471,10 +558,11 @@
         create: true,
       });
       const writable = await fileHandle.createWritable();
+      const cardsWithoutTimeLogs = stripTimeLogsFromCards(cards);
       const payload = {
         version: 1,
         updatedAt: new Date().toISOString(),
-        cards,
+        cards: cardsWithoutTimeLogs,
       };
 
       await writable.write(JSON.stringify(payload, null, 2));
@@ -493,6 +581,26 @@
       const historyWritable = await historyFileHandle.createWritable();
       await historyWritable.write(JSON.stringify(payload, null, 2));
       await historyWritable.close();
+
+      await this.syncTimeLogs(cards);
+    },
+
+    async syncTimeLogs(cards) {
+      if (!this.directoryHandle) {
+        return;
+      }
+
+      const timeLogDirectory = await this.directoryHandle.getDirectoryHandle(TIME_LOG_DIR_NAME, {
+        create: true,
+      });
+      const timeLogFileHandle = await timeLogDirectory.getFileHandle(TIME_LOG_FILE_NAME, {
+        create: true,
+      });
+
+      const payload = buildTimeLogPayload(cards);
+      const writable = await timeLogFileHandle.createWritable();
+      await writable.write(JSON.stringify(payload, null, 2));
+      await writable.close();
     },
 
     async readCards() {
@@ -506,6 +614,31 @@
       }
 
       return await readCardsFromBackupFile(this.directoryHandle);
+    },
+
+    async readTimeLogs() {
+      if (!this.directoryHandle) {
+        throw new Error("Diretorio de dados nao configurado.");
+      }
+
+      const hasReadPermission = await ensureDirectoryPermission(this.directoryHandle, "read");
+      if (!hasReadPermission) {
+        throw new Error("Permissao de leitura negada para o diretorio de dados.");
+      }
+
+      try {
+        const timeLogDirectory = await this.directoryHandle.getDirectoryHandle(TIME_LOG_DIR_NAME);
+        const fileHandle = await timeLogDirectory.getFileHandle(TIME_LOG_FILE_NAME);
+        const file = await fileHandle.getFile();
+        const content = await file.text();
+        return JSON.parse(content);
+      } catch (error) {
+        if (error?.name === "NotFoundError") {
+          return null;
+        }
+
+        throw error;
+      }
     },
 
     async readLatestSnapshotCards() {
@@ -584,7 +717,9 @@
       try {
         const fromFile = await backupManager.readCards();
         if (Array.isArray(fromFile)) {
-          return fromFile.map((card) => normalizeCard(card));
+          const normalizedCards = fromFile.map((card) => normalizeCard(card));
+          const timeLogPayload = await backupManager.readTimeLogs();
+          return applyTimeLogPayload(normalizedCards, timeLogPayload);
         }
       } catch (error) {
         if (error?.name !== "NotFoundError") {
@@ -607,7 +742,8 @@
     },
     async save(cards) {
       if (!backupManager.directoryHandle) {
-        localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(cards));
+        const cardsWithoutTimeLogs = stripTimeLogsFromCards(cards);
+        localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(cardsWithoutTimeLogs));
         return;
       }
 
@@ -806,6 +942,137 @@
     };
   }
 
+  // ====== TIME TRACKING UTILITIES ======
+
+  /**
+   * Format milliseconds to human-readable duration
+   * @param {number} ms - Milliseconds
+   * @returns {string} Formatted duration (e.g., "2h 45m 30s")
+   */
+  function formatDurationMs(ms) {
+    if (!ms || ms < 0) return "0s";
+
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+
+    return parts.join(" ");
+  }
+
+  /**
+   * Calculate total accumulated time from all time log entries
+   * @param {Array} timeLogs - Array of time log entries
+   * @returns {number} Total milliseconds
+   */
+  function calculateTotalTimeMs(timeLogs) {
+    if (!Array.isArray(timeLogs) || !timeLogs.length) return 0;
+
+    return timeLogs.reduce((acc, log) => {
+      if (!log.start || !log.end) return acc;
+
+      const startTime = new Date(log.start).getTime();
+      const endTime = new Date(log.end).getTime();
+      const duration = Math.max(0, endTime - startTime);
+
+      return acc + duration;
+    }, 0);
+  }
+
+  /**
+   * Get the most recent active time log entry (started but not finished)
+   * @param {Array} timeLogs - Array of time log entries
+   * @returns {Object|null} The active log entry or null
+   */
+  function getActiveTimeLog(timeLogs) {
+    if (!Array.isArray(timeLogs) || !timeLogs.length) return null;
+
+    for (let index = timeLogs.length - 1; index >= 0; index -= 1) {
+      const log = timeLogs[index];
+      if (log.start && !log.end) {
+        return log;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Handle time tracking when card status changes
+   * @param {Object} card - The card object
+   * @param {string} newStatus - New status about to be applied
+   * @param {string} nowIso - Current timestamp in ISO format
+   */
+  function updateCardTimeTracking(card, previousStatus, newStatus, nowIso) {
+    if (!card.timeLogs) {
+      card.timeLogs = [];
+    }
+
+    const isLeavingTrackedStatus = previousStatus in TIME_TRACKED_STATUSES;
+    const isEnteringTrackedStatus = newStatus in TIME_TRACKED_STATUSES;
+
+    // Close the previous time log if leaving a tracked status
+    if (isLeavingTrackedStatus && previousStatus !== newStatus) {
+      const activeLog = getActiveTimeLog(card.timeLogs);
+      if (activeLog && !activeLog.end) {
+        activeLog.end = nowIso;
+        const startTime = new Date(activeLog.start).getTime();
+        const endTime = new Date(activeLog.end).getTime();
+        activeLog.duration = Math.max(0, endTime - startTime);
+      }
+    }
+
+    // Start a new time log if entering a tracked status
+    if (isEnteringTrackedStatus && previousStatus !== newStatus) {
+      card.timeLogs.push({
+        status: newStatus,
+        start: nowIso,
+        end: "",
+        duration: 0,
+      });
+    }
+  }
+
+  /**
+   * Toggle pause/resume on the active time log of a card
+   * Only works if card is in a tracked status and has an active session
+   * @param {Object} card - The card object
+   * @param {string} nowIso - Current timestamp in ISO format
+   */
+  function toggleCardTimePause(card, nowIso) {
+    if (!(card.status in TIME_TRACKED_STATUSES)) {
+      return { changed: false, isRunning: false };
+    }
+
+    if (!Array.isArray(card.timeLogs)) {
+      card.timeLogs = [];
+    }
+
+    const activeLog = getActiveTimeLog(card.timeLogs);
+
+    if (activeLog) {
+      activeLog.end = nowIso;
+      const startTime = new Date(activeLog.start).getTime();
+      const endTime = new Date(activeLog.end).getTime();
+      activeLog.duration = Math.max(0, endTime - startTime);
+      return { changed: true, isRunning: false };
+    }
+
+    card.timeLogs.push({
+      status: card.status,
+      start: nowIso,
+      end: "",
+      duration: 0,
+    });
+
+    return { changed: true, isRunning: true };
+  }
+
   function formatDateFromIso(dateValue) {
     if (!dateValue) return "-";
 
@@ -816,6 +1083,41 @@
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(parsed);
+  }
+
+  /**
+   * Format ISO date as date only (DD/MM/YYYY)
+   * @param {string} dateValue - ISO date string
+   * @returns {string} Formatted date (ex: "09/04/2026")
+   */
+  function formatDateOnly(dateValue) {
+    if (!dateValue) return "-";
+
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(parsed);
+  }
+
+  /**
+   * Format ISO date as time only (HH:MM)
+   * @param {string} dateValue - ISO date string
+   * @returns {string} Formatted time (ex: "14:30")
+   */
+  function formatTimeOnly(dateValue) {
+    if (!dateValue) return "-";
+
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
     }).format(parsed);
@@ -991,6 +1293,16 @@
     const deadlineState = getCardDeadlineState(card);
     const hasNote = Boolean(card.note?.trim());
     const noteActionLabel = hasNote ? "Ver observacao" : "Adicionar observacao";
+    const hasTimeLog = Boolean(card.timeLogs?.length);
+    const timeLogActionLabel = hasTimeLog ? "Ver histórico de tempo" : "Sem registro";
+    
+    // Check if card is in a tracked status and has active time log
+    const isInTrackedStatus = card.status in TIME_TRACKED_STATUSES;
+    const activeLog = isInTrackedStatus ? getActiveTimeLog(card.timeLogs || []) : null;
+    const isRunning = Boolean(activeLog);
+    const canTogglePause = isInTrackedStatus;
+    const pauseActionLabel = isRunning ? "Pausar rastreamento" : "Retomar rastreamento";
+    
     const li = document.createElement("li");
     li.className = "kanban-card";
     li.draggable = true;
@@ -1003,11 +1315,28 @@
     li.innerHTML = `
       <div class="kanban-card__paper"></div>
       <article class="kanban-card__content">
-        ${
-          deadlineState.badge
-            ? `<div class="kanban-card__signals"><span class="deadline-badge deadline-badge--${deadlineState.state}">${escapeHTML(deadlineState.badge)}</span></div>`
-            : ""
-        }
+        <div class="kanban-card__signals">
+          ${
+            deadlineState.badge
+              ? `<span class="deadline-badge deadline-badge--${deadlineState.state}">${escapeHTML(deadlineState.badge)}</span>`
+              : '<span class="kanban-card__signals-spacer" aria-hidden="true"></span>'
+          }
+          ${
+            canTogglePause
+              ? `<button type="button" data-action="toggle-pause" class="card-actions__pause ${
+                  isRunning ? "card-actions__pause--running" : "card-actions__pause--paused"
+                }" aria-label="${pauseActionLabel}" title="${pauseActionLabel}">
+                <svg class="card-actions__pause-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  ${
+                    isRunning
+                      ? '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />'
+                      : '<path d="M8 5v14l11-7z" />'
+                  }
+                </svg>
+              </button>`
+              : ""
+          }
+        </div>
         <h3 class="kanban-card__title">${escapeHTML(card.title)}</h3>
         <p class="kanban-card__description">${escapeHTML(card.description)}</p>
 
@@ -1032,15 +1361,35 @@
         <footer class="kanban-card__footer">
           <span class="badge badge--${card.priority}">${PRIORITY_LABEL[card.priority]}</span>
           <div class="card-actions">
+            <button type="button" data-action="time-log" class="card-actions__time-log ${
+              hasTimeLog ? "card-actions__time-log--filled" : "card-actions__time-log--empty"
+            }" aria-label="${timeLogActionLabel}" title="${timeLogActionLabel}">
+              <svg class="card-actions__time-log-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+              </svg>
+            </button>
             <button type="button" data-action="note" class="card-actions__note ${
               hasNote ? "card-actions__note--filled" : "card-actions__note--empty"
             }" aria-label="${noteActionLabel}" title="${noteActionLabel}">
               <svg class="card-actions__note-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M5 4.75A2.75 2.75 0 0 0 2.25 7.5v6A2.75 2.75 0 0 0 5 16.25h1.53a1 1 0 0 1 .7.28l2.06 2.03a1.75 1.75 0 0 0 2.46 0l2.06-2.03a1 1 0 0 1 .7-.28H19A2.75 2.75 0 0 0 21.75 13.5v-6A2.75 2.75 0 0 0 19 4.75H5Zm2.5 4.25a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5A.75.75 0 0 1 7.5 9Zm0 3a.75.75 0 0 1 .75-.75h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1-.75-.75Z" />
+                ${
+                  hasNote
+                    ? '<path d="M5 4.75A2.75 2.75 0 0 0 2.25 7.5v6A2.75 2.75 0 0 0 5 16.25h1.53a1 1 0 0 1 .7.28l2.06 2.03a1.75 1.75 0 0 0 2.46 0l2.06-2.03a1 1 0 0 1 .7-.28H19A2.75 2.75 0 0 0 21.75 13.5v-6A2.75 2.75 0 0 0 19 4.75H5Zm2.5 4.25a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5A.75.75 0 0 1 7.5 9Zm0 3a.75.75 0 0 1 .75-.75h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1-.75-.75Z" />'
+                    : '<path d="M5 4.75A2.75 2.75 0 0 0 2.25 7.5v6A2.75 2.75 0 0 0 5 16.25h1.53a1 1 0 0 1 .7.28l2.06 2.03a1.75 1.75 0 0 0 2.46 0l2.06-2.03a1 1 0 0 1 .7-.28H19A2.75 2.75 0 0 0 21.75 13.5v-6A2.75 2.75 0 0 0 19 4.75H5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />'
+                }
               </svg>
             </button>
-            <button type="button" data-action="edit">Editar</button>
-            <button type="button" data-action="delete">Excluir</button>
+            <button type="button" data-action="edit" class="card-actions__edit" aria-label="Editar card" title="Editar">
+              <svg class="card-actions__edit-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" />
+                <path d="M20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+              </svg>
+            </button>
+            <button type="button" data-action="delete" class="card-actions__delete" aria-label="Excluir card" title="Excluir">
+              <svg class="card-actions__delete-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-9l-1 1H5v2h14V4z" />
+              </svg>
+            </button>
           </div>
         </footer>
       </article>
@@ -1184,6 +1533,88 @@
     refs.clearNoteButton.disabled = !card.note?.trim();
     refs.noteModal.showModal();
     refs.noteInput.focus();
+  }
+
+  function openTimeLogModal(cardId) {
+    const card = getCardById(cardId);
+    if (!card || !refs.timeLogModal) return;
+
+    refs.timeLogModalTitle.textContent = `Histórico de Tempo: ${card.title}`;
+    renderTimeLogModalContent(card);
+    refs.timeLogModal.showModal();
+  }
+
+  function closeTimeLogModal() {
+    if (refs.timeLogModal?.open) {
+      refs.timeLogModal.close();
+    }
+  }
+
+  function renderTimeLogModalContent(card) {
+    if (!refs.timeLogModalBody) return;
+
+    const totalMs = calculateTotalTimeMs(card.timeLogs || []);
+    const totalDuration = formatDurationMs(totalMs);
+
+    let html = `
+      <div class="time-log__summary">
+        <div class="time-log__summary-item">
+          <span class="time-log__summary-label">Tempo Total</span>
+          <span class="time-log__summary-value">${escapeHTML(totalDuration)}</span>
+        </div>
+        <div class="time-log__summary-item">
+          <span class="time-log__summary-label">Sessões</span>
+          <span class="time-log__summary-value">${card.timeLogs?.length || 0}</span>
+        </div>
+      </div>
+    `;
+
+    if (!card.timeLogs || !card.timeLogs.length) {
+      html += '<p class="time-log__empty">Nenhum registro de tempo disponível.</p>';
+    } else {
+      html += '<div class="time-log__entries">';
+      card.timeLogs.forEach((log, index) => {
+        const startDate = formatDateOnly(log.start);
+        const startTime = formatTimeOnly(log.start);
+        const endDate = log.end ? formatDateOnly(log.end) : "-";
+        const endTime = log.end ? formatTimeOnly(log.end) : "-";
+        
+        const durationFormatted = formatDurationMs(log.duration);
+        const statusLabel = TIME_TRACKED_STATUSES[log.status] || log.status;
+
+        html += `
+          <article class="time-log__entry">
+            <div class="time-log__entry-header">
+              <span class="time-log__entry-status">${escapeHTML(statusLabel)}</span>
+              <span class="time-log__entry-number">#${index + 1}</span>
+            </div>
+            <div class="time-log__entry-datetime">
+              <div class="time-log__entry-row">
+                <strong>Data início:</strong> ${startDate}
+              </div>
+              <div class="time-log__entry-row">
+                <strong>Hora início:</strong> ${startTime}
+              </div>
+            </div>
+            <div class="time-log__entry-datetime">
+              <div class="time-log__entry-row">
+                <strong>Data fim:</strong> ${endDate}
+              </div>
+              <div class="time-log__entry-row">
+                <strong>Hora fim:</strong> ${endTime}
+              </div>
+            </div>
+            <div class="time-log__entry-duration">
+              <strong>Duração:</strong> <span class="time-log__duration-badge">${escapeHTML(durationFormatted)}</span>
+            </div>
+            ${!log.end ? '<div class="time-log__entry-row"><strong>Status:</strong> <em class="time-log__entry-active">Em progresso...</em></div>' : ''}
+          </article>
+        `;
+      });
+      html += '</div>';
+    }
+
+    refs.timeLogModalBody.innerHTML = html;
   }
 
   function closeNoteModal() {
@@ -1349,6 +1780,32 @@
     openModal("edit", card);
   }
 
+  async function toggleCardPauseStatus(cardId) {
+    const card = getCardById(cardId);
+    if (!card) return;
+
+    const nowIso = new Date().toISOString();
+    const result = toggleCardTimePause(card, nowIso);
+
+    if (!result.changed) {
+      showToast("Pause/retomada disponível apenas em Em Andamento ou Em Revisão.", "info");
+      return;
+    }
+
+    card.updatedAt = nowIso;
+
+    try {
+      await cardRepository.save(state.cards);
+    } catch (error) {
+      console.error("Erro ao salvar pausa de tempo:", error);
+      showToast("Falha ao salvar a pausa de tempo.", "error");
+      return;
+    }
+
+    renderBoard();
+    showToast(result.isRunning ? "Rastreamento retomado." : "Rastreamento pausado.");
+  }
+
   async function updateCardStatus(cardId, newStatus) {
     const card = getCardById(cardId);
     if (!card || !STATUS[newStatus]) return;
@@ -1356,6 +1813,7 @@
     const previousStatus = card.status;
     const nowIso = new Date().toISOString();
 
+    updateCardTimeTracking(card, previousStatus, newStatus, nowIso);
     card.status = newStatus;
     card.completedAt = resolveCompletedAt(previousStatus, newStatus, card.completedAt, nowIso);
     card.updatedAt = nowIso;
@@ -1398,13 +1856,23 @@
 
       const previousStatus = card.status;
       const nowIso = new Date().toISOString();
+      updateCardTimeTracking(card, previousStatus, payload.status, nowIso);
 
       Object.assign(card, payload, {
         completedAt: resolveCompletedAt(previousStatus, payload.status, card.completedAt, nowIso),
         updatedAt: nowIso,
       });
     } else {
-      state.cards.push(normalizeCard(payload));
+      const newCard = normalizeCard(payload);
+      if (newCard.status in TIME_TRACKED_STATUSES) {
+        newCard.timeLogs.push({
+          status: newCard.status,
+          start: newCard.createdAt,
+          end: "",
+          duration: 0,
+        });
+      }
+      state.cards.push(newCard);
     }
 
     let persisted = true;
@@ -1441,6 +1909,16 @@
       editCard(cardId);
       return;
     }
+
+    if (action === "time-log") {
+      openTimeLogModal(cardId);
+      return;
+    }
+    
+     if (action === "toggle-pause") {
+       toggleCardPauseStatus(cardId);
+       return;
+     }
 
     if (action === "note") {
       openNoteModal(cardId);
@@ -1714,6 +2192,21 @@
       }
     });
 
+    refs.closeTimeLogModalButton?.addEventListener("click", closeTimeLogModal);
+
+    refs.timeLogModal?.addEventListener("click", (event) => {
+      const bounds = refs.timeLogModal.getBoundingClientRect();
+      const clickedOutside =
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom;
+
+      if (clickedOutside) {
+        closeTimeLogModal();
+      }
+    });
+
     refs.searchInput.addEventListener("input", (event) => {
       state.filters.search = event.target.value;
       renderBoard();
@@ -1797,7 +2290,8 @@
       try {
         const snapshotCards = await backupManager.readLatestSnapshotCards();
         const normalizedCards = snapshotCards.map((card) => normalizeCard(card));
-        state.cards = normalizedCards;
+        const timeLogPayload = await backupManager.readTimeLogs();
+        state.cards = applyTimeLogPayload(normalizedCards, timeLogPayload);
         await cardRepository.save(state.cards);
         setStorageReady(true);
         renderBoard();
