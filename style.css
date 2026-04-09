@@ -22,6 +22,10 @@
   --priority-low: #338a5c;
   --priority-medium: #c9831f;
   --priority-high: #bb3d32;
+  --deadline-warning: #be7b11;
+  --deadline-warning-soft: rgba(223, 169, 58, 0.22);
+  --deadline-overdue: #b54141;
+  --deadline-overdue-soft: rgba(181, 65, 65, 0.2);
 }
 
 * {
@@ -129,6 +133,11 @@ h3 {
   letter-spacing: 0.01em;
 }
 
+.field__hint {
+  font-size: 0.76rem;
+  color: #6d7e92;
+}
+
 .field input,
 .field select,
 .field textarea {
@@ -151,6 +160,92 @@ h3 {
   min-height: 44px;
   padding: 0.35rem;
   cursor: pointer;
+}
+
+.postit-presets {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.postit-preset {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(39, 53, 71, 0.14);
+  background: var(--preset-color);
+  box-shadow: 0 6px 12px rgba(20, 31, 45, 0.12);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.postit-preset::before {
+  content: "";
+  position: absolute;
+  top: 0.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56%;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.postit-preset::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.14), rgba(255, 255, 255, 0.14));
+  clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  opacity: 0.5;
+}
+
+.postit-preset:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 9px 16px rgba(20, 31, 45, 0.16);
+}
+
+.postit-preset:focus-visible {
+  outline: none;
+  border-color: rgba(27, 111, 216, 0.55);
+  box-shadow: 0 0 0 3px rgba(27, 111, 216, 0.15);
+}
+
+.postit-preset.is-selected {
+  border-color: rgba(27, 111, 216, 0.6);
+  box-shadow: 0 0 0 3px rgba(27, 111, 216, 0.16), 0 8px 16px rgba(20, 31, 45, 0.16);
+}
+
+.postit-preset[data-postit-color="#ffe98f"] {
+  --preset-color: #ffe98f;
+}
+
+.postit-preset[data-postit-color="#bce6ff"] {
+  --preset-color: #bce6ff;
+}
+
+.postit-preset[data-postit-color="#c8f2bf"] {
+  --preset-color: #c8f2bf;
+}
+
+.postit-preset[data-postit-color="#ffd1e5"] {
+  --preset-color: #ffd1e5;
+}
+
+.postit-preset[data-postit-color="#ffd9bf"] {
+  --preset-color: #ffd9bf;
+}
+
+.postit-preset[data-postit-color="#e3d7ff"] {
+  --preset-color: #e3d7ff;
+}
+
+.postit-custom-color {
+  margin-top: 0.15rem;
 }
 
 .field input:focus,
@@ -333,9 +428,23 @@ h3 {
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: var(--card-color, var(--postit-yellow));
   box-shadow: 0 7px 15px rgba(33, 38, 45, 0.12);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
   overflow: hidden;
   animation: cardEntrance 0.45s ease;
+}
+
+.kanban-card[data-urgency="warning"] {
+  border-color: rgba(190, 123, 17, 0.28);
+  box-shadow:
+    inset 5px 0 0 var(--deadline-warning),
+    0 8px 17px rgba(33, 38, 45, 0.13);
+}
+
+.kanban-card[data-urgency="overdue"] {
+  border-color: rgba(181, 65, 65, 0.3);
+  box-shadow:
+    inset 6px 0 0 var(--deadline-overdue),
+    0 9px 18px rgba(181, 65, 65, 0.16);
 }
 
 .kanban-card::before {
@@ -369,6 +478,18 @@ h3 {
   box-shadow: var(--shadow-hover);
 }
 
+.kanban-card[data-urgency="warning"]:hover {
+  box-shadow:
+    inset 5px 0 0 var(--deadline-warning),
+    0 18px 30px rgba(149, 102, 31, 0.22);
+}
+
+.kanban-card[data-urgency="overdue"]:hover {
+  box-shadow:
+    inset 6px 0 0 var(--deadline-overdue),
+    0 18px 30px rgba(181, 65, 65, 0.24);
+}
+
 .kanban-card.dragging {
   opacity: 0.48;
   transform: rotate(0deg) scale(1.02);
@@ -395,6 +516,38 @@ h3 {
   display: grid;
   gap: 0.45rem;
   padding: 0.9rem 0.85rem 0.75rem;
+}
+
+.kanban-card__signals {
+  display: flex;
+  align-items: center;
+  min-height: 1.2rem;
+}
+
+.deadline-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.22rem 0.52rem;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.deadline-badge--warning {
+  color: #8a5b10;
+  background: rgba(255, 247, 221, 0.92);
+  border-color: rgba(190, 123, 17, 0.2);
+}
+
+.deadline-badge--overdue {
+  color: #922f2f;
+  background: rgba(255, 237, 237, 0.95);
+  border-color: rgba(181, 65, 65, 0.22);
+  animation: deadlinePulse 2.6s ease-in-out infinite;
 }
 
 .kanban-card__title {
@@ -436,6 +589,36 @@ h3 {
 
 .kanban-card__meta li strong {
   font-weight: 800;
+}
+
+.kanban-card__meta-item--warning,
+.kanban-card__meta-item--overdue {
+  padding: 0.28rem 0.4rem;
+  margin-inline: -0.1rem;
+  border-radius: 0.5rem;
+}
+
+.kanban-card__meta-item--warning {
+  background: var(--deadline-warning-soft);
+}
+
+.kanban-card__meta-item--overdue {
+  background: var(--deadline-overdue-soft);
+}
+
+.kanban-card__due-note {
+  display: block;
+  margin-top: 0.16rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.kanban-card__meta-item--warning .kanban-card__due-note {
+  color: #8a5b10;
+}
+
+.kanban-card__meta-item--overdue .kanban-card__due-note {
+  color: #922f2f;
 }
 
 .kanban-card__footer {
@@ -500,6 +683,34 @@ h3 {
   background: #fff;
 }
 
+.card-actions__note {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  padding-inline: 0;
+}
+
+.card-actions__note-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.card-actions__note--empty {
+  color: #50647b;
+}
+
+.card-actions__note--filled {
+  color: #1b6fd8;
+  border-color: rgba(27, 111, 216, 0.34);
+  background: rgba(232, 241, 254, 0.9);
+}
+
+.note-modal__footer {
+  justify-content: space-between;
+}
+
 .modal {
   border: none;
   border-radius: 1rem;
@@ -543,6 +754,23 @@ h3 {
   border-radius: 0.8rem;
   background: #f6f9fe;
   padding: 0.85rem;
+}
+
+.settings-modal__info--compact {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.settings-modal__info--compact .field {
+  gap: 0.4rem;
+}
+
+.settings-modal__info--compact input[type="number"] {
+  max-width: 150px;
+}
+
+#successToastDurationInput {
+  max-width: 170px;
 }
 
 .settings-modal__label {
@@ -666,6 +894,55 @@ h3 {
   justify-content: flex-end;
 }
 
+.success-toast-stack {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 70;
+  display: grid;
+  gap: 0.55rem;
+  width: min(360px, calc(100% - 1.2rem));
+  pointer-events: none;
+}
+
+.success-toast {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.62rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(35, 128, 86, 0.24);
+  background: linear-gradient(180deg, rgba(243, 252, 246, 0.98), rgba(234, 247, 239, 0.98));
+  box-shadow: 0 10px 20px rgba(18, 48, 33, 0.13);
+  color: #1f3d2d;
+  padding: 0.68rem 0.8rem;
+  animation: successToastIn 0.2s ease-out;
+}
+
+.success-toast.is-leaving {
+  animation: successToastOut 0.42s ease forwards;
+}
+
+.success-toast__icon {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.84rem;
+  font-weight: 800;
+  background: #218a58;
+  color: #fff;
+}
+
+.success-toast__message {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  font-weight: 750;
+}
+
 .empty-state {
   text-align: center;
   font-size: 0.8rem;
@@ -684,6 +961,50 @@ h3 {
   to {
     opacity: 1;
     transform: rotate(var(--rotation, 0deg));
+  }
+}
+
+@keyframes deadlinePulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(181, 65, 65, 0);
+  }
+
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 6px rgba(181, 65, 65, 0.08);
+  }
+}
+
+@keyframes successToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-7px) translateX(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(0);
+  }
+}
+
+@keyframes successToastOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-4px) translateX(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .success-toast,
+  .success-toast.is-leaving {
+    animation: none;
   }
 }
 
@@ -749,6 +1070,10 @@ h3 {
 @media (max-width: 540px) {
   .topbar h1 {
     font-size: 1.15rem;
+  }
+
+  .postit-presets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .topbar__filters {

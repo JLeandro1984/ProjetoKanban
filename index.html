@@ -208,10 +208,24 @@
             </select>
           </label>
 
-          <label class="field" for="colorInput">
+          <div class="field field--full">
             <span class="field__label">Cor do Card</span>
-            <input id="colorInput" name="postItColor" type="color" value="#ffe98f" />
-          </label>
+            <div class="postit-presets" role="group" aria-label="Cores de post-it mais usadas">
+              <button type="button" class="postit-preset" data-postit-color="#ffe98f" aria-label="Amarelo" title="Amarelo"></button>
+              <button type="button" class="postit-preset" data-postit-color="#bce6ff" aria-label="Azul" title="Azul"></button>
+              <button type="button" class="postit-preset" data-postit-color="#c8f2bf" aria-label="Verde" title="Verde"></button>
+              <button type="button" class="postit-preset" data-postit-color="#ffd1e5" aria-label="Rosa" title="Rosa"></button>
+              <button type="button" class="postit-preset" data-postit-color="#ffd9bf" aria-label="Pessego" title="Pessego"></button>
+              <button type="button" class="postit-preset" data-postit-color="#e3d7ff" aria-label="Lilas" title="Lilas"></button>
+            </div>
+
+            <label class="field postit-custom-color" for="colorInput">
+              <span class="field__label">Outra cor</span>
+              <input id="colorInput" name="postItColor" type="color" value="#ffe98f" />
+            </label>
+
+            <span class="field__hint">Escolha um tom clássico de post-it ou personalize com qualquer outra cor.</span>
+          </div>
         </div>
 
         <footer class="modal__footer">
@@ -237,6 +251,38 @@
             <span id="directoryPathText" class="settings-modal__path">Nenhum diretório selecionado.</span>
           </p>
           <p class="settings-modal__hint">O navegador disponibiliza apenas o nome da pasta selecionada por privacidade.</p>
+        </div>
+
+        <div class="settings-modal__info settings-modal__info--compact">
+          <label class="field" for="deadlineWarningDaysInput">
+            <span class="field__label">Iniciar alerta de prazo</span>
+            <input
+              id="deadlineWarningDaysInput"
+              type="number"
+              min="0"
+              max="30"
+              step="1"
+              inputmode="numeric"
+            />
+          </label>
+          <p class="settings-modal__hint">
+            Defina quantos dias antes do vencimento o card deve entrar em alerta. Se não alterar, o padrão continua em 2 dias.
+          </p>
+
+          <label class="field" for="successToastDurationInput">
+            <span class="field__label">Duração do aviso de sucesso (segundos)</span>
+            <input
+              id="successToastDurationInput"
+              type="number"
+              min="1.2"
+              max="5"
+              step="0.1"
+              inputmode="decimal"
+            />
+          </label>
+          <p class="settings-modal__hint">
+            Define por quantos segundos o aviso verde de sucesso fica visível. Se não alterar, o padrão continua em 2.8 segundos.
+          </p>
         </div>
 
         <footer class="modal__footer settings-modal__actions">
@@ -269,6 +315,29 @@
         </footer>
       </article>
     </dialog>
+
+    <dialog id="noteModal" class="modal" aria-label="Observação do card">
+      <form id="noteForm" class="modal__content" method="dialog">
+        <header class="modal__header">
+          <h3 id="noteModalTitle">Observação do card</h3>
+          <button type="button" id="closeNoteModalButton" class="btn btn--ghost" aria-label="Fechar observação">
+            Fechar
+          </button>
+        </header>
+
+        <label class="field field--full" for="noteInput">
+          <span class="field__label">Observação</span>
+          <textarea id="noteInput" name="note" rows="5" maxlength="500" placeholder="Adicione uma observação útil para este card"></textarea>
+        </label>
+
+        <footer class="modal__footer note-modal__footer">
+          <button type="button" id="clearNoteButton" class="btn btn--ghost">Limpar Observação</button>
+          <button type="submit" id="saveNoteButton" class="btn btn--primary">Salvar Observação</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="successToastStack" class="success-toast-stack" aria-live="polite" aria-atomic="false"></div>
 
     <script src="script.js"></script>
   </body>

@@ -20,6 +20,11 @@ A tela conta com cinco colunas padrao de fluxo de trabalho, filtros dinamicos, o
 - Drag-and-drop entre colunas
 - Contador automatico de cards por coluna
 - Filtro por texto, data, prioridade e responsavel
+- Destaque inteligente de prazo nos cards:
+  - Estado "Vencido" para cards atrasados
+  - Estado de alerta para cards que vencem em breve
+  - Indicacao textual (vence hoje, amanha, em X dias, vencido ha X dias)
+  - Priorizacao visual e de ordenacao para vencidos e proximos do vencimento
 - Regras de ordenacao/exibicao:
   - Backlog: prioridade (Alta > Media > Baixa) e, em empate, prazo mais proximo
   - Concluido: exibe apenas os 30 mais recentes por padrao
@@ -29,7 +34,10 @@ A tela conta com cinco colunas padrao de fluxo de trabalho, filtros dinamicos, o
   - Data de criacao exibida em todos os cards
   - Data e hora de conclusao exibidas apenas quando o card for movido para "Concluido"
   - Data de conclusao removida automaticamente se o card for reaberto
-- Sistema de alertas via modal profissional com fila de mensagens
+- Feedback e alertas:
+  - Toast de sucesso discreto no canto superior direito (nao bloqueante)
+  - Modal de alerta para erros e informacoes com acao
+  - Fila de mensagens para notificacoes modais
 - Instalacao opcional como PWA (Progressive Web App)
 - Cache basico offline para arquivos do app shell
 
@@ -57,6 +65,12 @@ Na modal de Configuracoes:
   - Verde quando ha diretorio ativo
   - Vermelho quando nao ha diretorio configurado
 - Exibicao do diretorio selecionado (nome da pasta, conforme permissao do navegador)
+- Ajuste de inicio do alerta de prazo:
+  - Valor padrao de 2 dias
+  - Configuravel pelo usuario
+- Ajuste da duracao do toast de sucesso:
+  - Valor padrao de 2.8 segundos
+  - Limite maximo de 5 segundos
 
 #### Compatibilidade
 
@@ -75,7 +89,9 @@ Cada card contem:
 - Prazo
 - Tag / Categoria
 - Cor personalizada
+- Seletor rapido com 6 cores classicas de post-it e opcao de cor livre
 - Coluna de destino
+- Observacao opcional (icone dedicado no card, com modal exclusiva para adicionar/visualizar/editar)
 - Data de criacao (automatica)
 - Data e hora de conclusao (automatica, exibida apenas na coluna "Concluido")
 
@@ -87,18 +103,19 @@ Cada card contem:
 - Colunas com visual elegante e separacao clara
 - Cards com comportamento de post-it:
   - cor personalizada pelo usuario
+  - presets visuais com 6 cores comuns de post-it
   - rotacao sutil aleatoria
   - sombra suave
   - fita no topo
   - dobra no canto inferior
   - textura leve de papel
+- Acao de observacao por card:
+  - icone com estado "sem observacao" e "com observacao"
+  - modal exclusiva para edicao da observacao
 - Animacoes suaves de hover e arraste
-- Modal de alerta com:
-  - icone/badge por tipo (sucesso, erro, informacao)
-  - fila automatica de mensagens
-  - botao de acao configuravel por chamada
-  - botao "Fechar" opcional (ocultavel por contexto)
-  - fechamento ao clicar fora do modal
+- Notificacoes com dois niveis:
+  - toast de sucesso com fade-in/fade-out e auto-fechamento
+  - modal de alerta para erro/info com botao de acao configuravel e fechamento ao clicar fora
 
 ## Estrutura do projeto
 
@@ -149,7 +166,9 @@ Os cards sao criados manualmente pelo usuario e salvos imediatamente no arquivo 
 - Repositorio de dados isolado (`cardRepository`) com operacoes async sobre o sistema de arquivos
 - `backupManager` centraliza leitura, escrita e snapshots no diretorio local
 - Renderizacao desacoplada das acoes
-- Sistema de alertas com fila (`alertQueue`) e modal reutilizavel
+- Sistema de notificacoes hibrido:
+  - fila modal para alertas de erro/info (`alertQueue`)
+  - stack de toast para sucessos nao bloqueantes (`successToastStack`)
 
 ### Proximos passos sugeridos
 

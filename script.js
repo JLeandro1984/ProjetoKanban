@@ -1,6 +1,8 @@
 (() => {
   const LEGACY_STORAGE_KEY = "kanban-project-control-v1";
   const LAST_COLOR_KEY = "kanban-last-postit-color-v1";
+  const DEADLINE_WARNING_DAYS_KEY = "kanban-deadline-warning-days-v1";
+  const SUCCESS_TOAST_VISIBLE_MS_KEY = "kanban-success-toast-visible-ms-v1";
   const BACKUP_DB_NAME = "kanban-backup-config-v1";
   const BACKUP_DB_STORE = "settings";
   const BACKUP_HANDLE_KEY = "backup-directory-handle";
@@ -46,11 +48,22 @@
     "var(--postit-lilac)": "#e3d7ff",
   };
 
+  const DAY_IN_MS = 24 * 60 * 60 * 1000;
+  const DEFAULT_DEADLINE_WARNING_DAYS = 2;
+  const DEFAULT_SUCCESS_TOAST_VISIBLE_MS = 2800;
+  const SUCCESS_TOAST_EXIT_MS = 420;
+  const MAX_SUCCESS_TOASTS = 3;
+
   const mockCards = [];
 
   const state = {
     cards: [],
     storageReady: false,
+    noteEditingId: null,
+    settings: {
+      deadlineWarningDays: DEFAULT_DEADLINE_WARNING_DAYS,
+      successToastVisibleMs: DEFAULT_SUCCESS_TOAST_VISIBLE_MS,
+    },
     filters: {
       search: "",
       date: "",
@@ -85,6 +98,8 @@
     modal: document.querySelector("#cardModal"),
     settingsModal: document.querySelector("#settingsModal"),
     closeSettingsButton: document.querySelector("#closeSettingsButton"),
+    deadlineWarningDaysInput: document.querySelector("#deadlineWarningDaysInput"),
+    successToastDurationInput: document.querySelector("#successToastDurationInput"),
     directoryStatusDot: document.querySelector("#directoryStatusDot"),
     directoryPathText: document.querySelector("#directoryPathText"),
     alertModal: document.querySelector("#alertModal"),
@@ -93,11 +108,20 @@
     alertBadge: document.querySelector("#alertBadge"),
     alertCloseButton: document.querySelector("#alertCloseButton"),
     alertOkButton: document.querySelector("#alertOkButton"),
+    noteModal: document.querySelector("#noteModal"),
+    noteForm: document.querySelector("#noteForm"),
+    noteInput: document.querySelector("#noteInput"),
+    noteModalTitle: document.querySelector("#noteModalTitle"),
+    closeNoteModalButton: document.querySelector("#closeNoteModalButton"),
+    saveNoteButton: document.querySelector("#saveNoteButton"),
+    clearNoteButton: document.querySelector("#clearNoteButton"),
+    successToastStack: document.querySelector("#successToastStack"),
     modalTitle: document.querySelector("#modalTitle"),
     saveCardButton: document.querySelector("#saveCardButton"),
     closeModalButton: document.querySelector("#closeModalButton"),
     cancelModalButton: document.querySelector("#cancelModalButton"),
     form: document.querySelector("#cardForm"),
+    postItPresetButtons: document.querySelectorAll("[data-postit-color]"),
     fields: {
       title: document.querySelector("#titleInput"),
       description: document.querySelector("#descriptionInput"),
@@ -148,6 +172,64 @@
     localStorage.setItem(LAST_COLOR_KEY, toColorInputValue(color));
   }
 
+  function updatePostItPresetSelection(selectedColor = refs.fields.postItColor?.value) {
+    const normalizedColor = toColorInputValue(selectedColor).toLowerCase();
+
+    refs.postItPresetButtons.forEach((button) => {
+      const isSelected = String(button.dataset.postitColor || "").toLowerCase() === normalizedColor;
+      button.classList.toggle("is-selected", isSelected);
+      button.setAttribute("aria-pressed", String(isSelected));
+    });
+  }
+
+  function sanitizeDeadlineWarningDays(value) {
+    const numericValue = Number.parseInt(String(value ?? ""), 10);
+
+    if (Number.isNaN(numericValue)) {
+      return DEFAULT_DEADLINE_WARNING_DAYS;
+    }
+
+    return Math.min(30, Math.max(0, numericValue));
+  }
+
+  function getStoredDeadlineWarningDays() {
+    const savedValue = localStorage.getItem(DEADLINE_WARNING_DAYS_KEY);
+    return sanitizeDeadlineWarningDays(savedValue);
+  }
+
+  function saveDeadlineWarningDays(value) {
+    const normalizedValue = sanitizeDeadlineWarningDays(value);
+    localStorage.setItem(DEADLINE_WARNING_DAYS_KEY, String(normalizedValue));
+    return normalizedValue;
+  }
+
+  function formatSuccessToastDurationSeconds(msValue) {
+    const seconds = Math.round(msValue / 100) / 10;
+    return Number.isInteger(seconds) ? String(seconds.toFixed(0)) : String(seconds);
+  }
+
+  function sanitizeSuccessToastVisibleMs(value) {
+    const numericValue = Number.parseFloat(String(value ?? ""));
+
+    if (Number.isNaN(numericValue)) {
+      return DEFAULT_SUCCESS_TOAST_VISIBLE_MS;
+    }
+
+    const milliseconds = Math.round(numericValue * 1000);
+    return Math.min(5000, Math.max(1200, milliseconds));
+  }
+
+  function getStoredSuccessToastVisibleMs() {
+    const savedValue = localStorage.getItem(SUCCESS_TOAST_VISIBLE_MS_KEY);
+    return sanitizeSuccessToastVisibleMs(savedValue);
+  }
+
+  function saveSuccessToastVisibleMs(value) {
+    const normalizedValue = sanitizeSuccessToastVisibleMs(value);
+    localStorage.setItem(SUCCESS_TOAST_VISIBLE_MS_KEY, String(normalizedValue));
+    return normalizedValue;
+  }
+
   function normalizeCard(card) {
     const nowIso = new Date().toISOString();
     const createdAt = card.createdAt || nowIso;
@@ -163,6 +245,7 @@
       tag: card.tag?.trim() || "",
       status: card.status || "backlog",
       postItColor: card.postItColor || pickPostItColor(),
+      note: card.note?.trim() || "",
       rotation: 0,
       createdAt,
       completedAt:
@@ -494,6 +577,16 @@
   function openSettingsModal() {
     if (!refs.settingsModal) return;
 
+    if (refs.deadlineWarningDaysInput) {
+      refs.deadlineWarningDaysInput.value = String(state.settings.deadlineWarningDays);
+    }
+
+    if (refs.successToastDurationInput) {
+      refs.successToastDurationInput.value = formatSuccessToastDurationSeconds(
+        state.settings.successToastVisibleMs
+      );
+    }
+
     refs.settingsModal.showModal();
     refs.settingsButton?.classList.add("is-active");
     refs.settingsButton?.setAttribute("aria-expanded", "true");
@@ -555,6 +648,102 @@
     return `${day}/${month}/${year}`;
   }
 
+  function parseDateOnly(dateValue) {
+    if (!dateValue) return null;
+
+    const [year, month, day] = dateValue.split("-").map(Number);
+    if (!year || !month || !day) return null;
+
+    return new Date(year, month - 1, day);
+  }
+
+  function getTodayStart() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  }
+
+  function formatDayCount(totalDays) {
+    return `${totalDays} ${totalDays === 1 ? "dia" : "dias"}`;
+  }
+
+  function getCardDeadlineState(card) {
+    if (!card.dueDate || card.status === "done") {
+      return {
+        state: "normal",
+        rank: 2,
+        badge: "",
+        helper: "",
+      };
+    }
+
+    const dueDate = parseDateOnly(card.dueDate);
+    if (!dueDate) {
+      return {
+        state: "normal",
+        rank: 2,
+        badge: "",
+        helper: "",
+      };
+    }
+
+    const daysUntilDue = Math.round((dueDate.getTime() - getTodayStart().getTime()) / DAY_IN_MS);
+
+    if (daysUntilDue < 0) {
+      const overdueDays = Math.abs(daysUntilDue);
+      return {
+        state: "overdue",
+        rank: 0,
+        badge: "Vencido",
+        helper: `Vencido ha ${formatDayCount(overdueDays)}`,
+      };
+    }
+
+    const warningThreshold = state.settings.deadlineWarningDays;
+    if (daysUntilDue > warningThreshold) {
+      return {
+        state: "normal",
+        rank: 2,
+        badge: "",
+        helper: "",
+      };
+    }
+
+    if (daysUntilDue === 0) {
+      return {
+        state: "warning",
+        rank: 1,
+        badge: "Vence hoje",
+        helper: "Entrega prevista para hoje",
+      };
+    }
+
+    if (daysUntilDue === 1) {
+      return {
+        state: "warning",
+        rank: 1,
+        badge: "Vence amanha",
+        helper: "Falta 1 dia para o prazo",
+      };
+    }
+
+    if (daysUntilDue === 2) {
+      return {
+        state: "warning",
+        rank: 1,
+        badge: "Vence em 2 dias",
+        helper: "Faltam 2 dias para o prazo",
+      };
+    }
+
+    return {
+      state: "warning",
+      rank: 1,
+      badge: `Vence em ${daysUntilDue} dias`,
+      helper: `Faltam ${formatDayCount(daysUntilDue)} para o prazo`,
+    };
+  }
+
   function formatDateFromIso(dateValue) {
     if (!dateValue) return "-";
 
@@ -605,6 +794,9 @@
 
   function sortBacklogCards(cards) {
     return [...cards].sort((a, b) => {
+      const byUrgency = compareCardUrgency(a, b);
+      if (byUrgency !== 0) return byUrgency;
+
       const byPriority = PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
       if (byPriority !== 0) return byPriority;
 
@@ -628,37 +820,80 @@
   }
 
   function compareDates(dateA, dateB) {
-    const timeA = dateA ? new Date(dateA).getTime() : Number.MAX_SAFE_INTEGER;
-    const timeB = dateB ? new Date(dateB).getTime() : Number.MAX_SAFE_INTEGER;
+    const timeA = parseComparableDate(dateA);
+    const timeB = parseComparableDate(dateB);
     return timeA - timeB;
+  }
+
+  function parseComparableDate(dateValue) {
+    if (!dateValue) return Number.MAX_SAFE_INTEGER;
+
+    const parsedDateOnly = parseDateOnly(dateValue);
+    if (parsedDateOnly) {
+      return parsedDateOnly.getTime();
+    }
+
+    const timeValue = new Date(dateValue).getTime();
+    return Number.isNaN(timeValue) ? Number.MAX_SAFE_INTEGER : timeValue;
+  }
+
+  function compareCardUrgency(cardA, cardB) {
+    const deadlineA = getCardDeadlineState(cardA);
+    const deadlineB = getCardDeadlineState(cardB);
+    const byRank = deadlineA.rank - deadlineB.rank;
+
+    if (byRank !== 0) {
+      return byRank;
+    }
+
+    if (deadlineA.rank < 2) {
+      const byDueDate = compareDates(cardA.dueDate, cardB.dueDate);
+      if (byDueDate !== 0) {
+        return byDueDate;
+      }
+    }
+
+    return 0;
+  }
+
+  function compareCardsByActiveSort(a, b) {
+    switch (state.filters.sortBy) {
+      case "priority_desc": {
+        const byPriority = PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
+        if (byPriority !== 0) return byPriority;
+        return compareDates(a.dueDate, b.dueDate);
+      }
+      case "priority_asc": {
+        const byPriority = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority];
+        if (byPriority !== 0) return byPriority;
+        return compareDates(a.dueDate, b.dueDate);
+      }
+      case "due_asc":
+        return compareDates(a.dueDate, b.dueDate);
+      case "due_desc":
+        return compareDates(b.dueDate, a.dueDate);
+      case "updated_desc":
+      default: {
+        const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+        const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+        return bTime - aTime;
+      }
+    }
+  }
+
+  function sortCardsWithinStatus(cards) {
+    return [...cards].sort((a, b) => {
+      const byUrgency = compareCardUrgency(a, b);
+      if (byUrgency !== 0) return byUrgency;
+      return compareCardsByActiveSort(a, b);
+    });
   }
 
   function sortCards(cards) {
     const sorted = [...cards];
 
     sorted.sort((a, b) => {
-      switch (state.filters.sortBy) {
-        case "priority_desc": {
-          const byPriority = PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
-          if (byPriority !== 0) return byPriority;
-          return compareDates(a.dueDate, b.dueDate);
-        }
-        case "priority_asc": {
-          const byPriority = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority];
-          if (byPriority !== 0) return byPriority;
-          return compareDates(a.dueDate, b.dueDate);
-        }
-        case "due_asc":
-          return compareDates(a.dueDate, b.dueDate);
-        case "due_desc":
-          return compareDates(b.dueDate, a.dueDate);
-        case "updated_desc":
-        default: {
-          const aTime = new Date(a.updatedAt || a.createdAt).getTime();
-          const bTime = new Date(b.updatedAt || b.createdAt).getTime();
-          return bTime - aTime;
-        }
-      }
+      return compareCardsByActiveSort(a, b);
     });
 
     return sorted;
@@ -691,23 +926,38 @@
   }
 
   function createCardElement(card) {
+    const deadlineState = getCardDeadlineState(card);
+    const hasNote = Boolean(card.note?.trim());
+    const noteActionLabel = hasNote ? "Ver observacao" : "Adicionar observacao";
     const li = document.createElement("li");
     li.className = "kanban-card";
     li.draggable = true;
     li.dataset.id = card.id;
     li.dataset.status = card.status;
+    li.dataset.urgency = deadlineState.state;
     li.style.setProperty("--rotation", `${card.rotation}deg`);
     li.style.setProperty("--card-color", card.postItColor);
 
     li.innerHTML = `
       <div class="kanban-card__paper"></div>
       <article class="kanban-card__content">
+        ${
+          deadlineState.badge
+            ? `<div class="kanban-card__signals"><span class="deadline-badge deadline-badge--${deadlineState.state}">${escapeHTML(deadlineState.badge)}</span></div>`
+            : ""
+        }
         <h3 class="kanban-card__title">${escapeHTML(card.title)}</h3>
         <p class="kanban-card__description">${escapeHTML(card.description)}</p>
 
         <ul class="kanban-card__meta">
           <li><strong>Responsavel:</strong> ${escapeHTML(card.assignee)}</li>
-          <li><strong>Prazo:</strong> ${formatDate(card.dueDate)}</li>
+          <li class="kanban-card__meta-item ${
+            deadlineState.badge ? `kanban-card__meta-item--${deadlineState.state}` : ""
+          }"><strong>Prazo:</strong> ${formatDate(card.dueDate)}${
+      deadlineState.helper
+        ? `<span class="kanban-card__due-note">${escapeHTML(deadlineState.helper)}</span>`
+        : ""
+    }</li>
           <li><strong>Criado em:</strong> ${formatDateFromIso(card.createdAt)}</li>
           ${
             card.completedAt
@@ -720,6 +970,13 @@
         <footer class="kanban-card__footer">
           <span class="badge badge--${card.priority}">${PRIORITY_LABEL[card.priority]}</span>
           <div class="card-actions">
+            <button type="button" data-action="note" class="card-actions__note ${
+              hasNote ? "card-actions__note--filled" : "card-actions__note--empty"
+            }" aria-label="${noteActionLabel}" title="${noteActionLabel}">
+              <svg class="card-actions__note-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4.75A2.75 2.75 0 0 0 2.25 7.5v6A2.75 2.75 0 0 0 5 16.25h1.53a1 1 0 0 1 .7.28l2.06 2.03a1.75 1.75 0 0 0 2.46 0l2.06-2.03a1 1 0 0 1 .7-.28H19A2.75 2.75 0 0 0 21.75 13.5v-6A2.75 2.75 0 0 0 19 4.75H5Zm2.5 4.25a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5A.75.75 0 0 1 7.5 9Zm0 3a.75.75 0 0 1 .75-.75h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1-.75-.75Z" />
+              </svg>
+            </button>
             <button type="button" data-action="edit">Editar</button>
             <button type="button" data-action="delete">Excluir</button>
           </div>
@@ -792,9 +1049,14 @@
     });
 
     cardsByStatus.backlog = sortBacklogCards(cardsByStatus.backlog);
+    cardsByStatus.todo = sortCardsWithinStatus(cardsByStatus.todo);
+    cardsByStatus.progress = sortCardsWithinStatus(cardsByStatus.progress);
+    cardsByStatus.review = sortCardsWithinStatus(cardsByStatus.review);
 
     if (!hasActiveSearch) {
       cardsByStatus.done = keepLatestDoneCards(cardsByStatus.done, 30);
+    } else {
+      cardsByStatus.done = sortCards(cardsByStatus.done);
     }
 
     Object.entries(cardsByStatus).forEach(([status, cards]) => {
@@ -839,6 +1101,8 @@
       refs.fields.postItColor.value = getLastPickedColor();
     }
 
+    updatePostItPresetSelection();
+
     refs.modal.showModal();
     refs.fields.title.focus();
   }
@@ -846,6 +1110,51 @@
   function closeModal() {
     refs.modal.close();
     state.editingId = null;
+  }
+
+  function openNoteModal(cardId) {
+    const card = getCardById(cardId);
+    if (!card || !refs.noteModal || !refs.noteInput) return;
+
+    state.noteEditingId = cardId;
+    refs.noteModalTitle.textContent = `Observacao: ${card.title}`;
+    refs.noteInput.value = card.note || "";
+    refs.clearNoteButton.disabled = !card.note?.trim();
+    refs.noteModal.showModal();
+    refs.noteInput.focus();
+  }
+
+  function closeNoteModal() {
+    if (refs.noteModal?.open) {
+      refs.noteModal.close();
+    }
+
+    state.noteEditingId = null;
+  }
+
+  async function saveCardNote(noteText) {
+    if (!state.noteEditingId) return;
+
+    const card = getCardById(state.noteEditingId);
+    if (!card) {
+      closeNoteModal();
+      return;
+    }
+
+    card.note = noteText.trim();
+    card.updatedAt = new Date().toISOString();
+
+    try {
+      await cardRepository.save(state.cards);
+    } catch (error) {
+      console.error("Erro ao salvar observacao:", error);
+      showToast("Falha ao salvar observacao no diretorio local.", "error");
+      return;
+    }
+
+    renderBoard();
+    showToast(card.note ? "Observacao salva." : "Observacao removida.");
+    closeNoteModal();
   }
 
   function openNextAlert() {
@@ -904,8 +1213,46 @@
     hideClose = false,
     onConfirm = null
   ) {
+    if (type === "success" && !confirmLabel && !hideClose && typeof onConfirm !== "function") {
+      showSuccessToast(message);
+      return;
+    }
+
     alertQueue.push({ message, type, confirmLabel, hideClose, onConfirm });
     openNextAlert();
+  }
+
+  function showSuccessToast(message) {
+    if (!refs.successToastStack || !message) {
+      return;
+    }
+
+    while (refs.successToastStack.children.length >= MAX_SUCCESS_TOASTS) {
+      refs.successToastStack.firstElementChild?.remove();
+    }
+
+    const toast = document.createElement("article");
+    toast.className = "success-toast";
+    toast.setAttribute("role", "status");
+    toast.innerHTML = `
+      <span class="success-toast__icon" aria-hidden="true">✓</span>
+      <p class="success-toast__message">${escapeHTML(message)}</p>
+    `;
+
+    refs.successToastStack.append(toast);
+
+    const closeToast = () => {
+      if (!toast.isConnected || toast.classList.contains("is-leaving")) {
+        return;
+      }
+
+      toast.classList.add("is-leaving");
+      setTimeout(() => {
+        toast.remove();
+      }, SUCCESS_TOAST_EXIT_MS);
+    };
+
+    setTimeout(closeToast, state.settings.successToastVisibleMs);
   }
 
   function getCardById(cardId) {
@@ -917,15 +1264,21 @@
     if (!card) return;
 
     state.cards = state.cards.filter((item) => item.id !== cardId);
+    let persisted = true;
 
     try {
       await cardRepository.save(state.cards);
     } catch (error) {
+      persisted = false;
       console.error("Erro ao salvar exclusao:", error);
       showToast("Falha ao salvar no diretorio local.", "error");
     }
 
     renderBoard();
+
+    if (persisted) {
+      showToast("Card excluido com sucesso.");
+    }
   }
 
   function editCard(cardId) {
@@ -1014,6 +1367,8 @@
     const button = event.target.closest("button[data-action]");
     if (!button) return;
 
+    event.stopPropagation();
+
     const cardElement = button.closest(".kanban-card");
     if (!cardElement) return;
 
@@ -1025,12 +1380,22 @@
       return;
     }
 
+    if (action === "note") {
+      openNoteModal(cardId);
+      return;
+    }
+
     if (action === "delete") {
       deleteCard(cardId);
     }
   }
 
   function handleDragStart(event) {
+    if (event.target.closest("button[data-action]")) {
+      event.preventDefault();
+      return;
+    }
+
     const cardElement = event.target.closest(".kanban-card");
     if (!cardElement || cardElement.classList.contains("empty-state")) return;
 
@@ -1149,6 +1514,29 @@
       handleFormSubmit(event);
     });
 
+    refs.noteForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await saveCardNote(refs.noteInput?.value || "");
+    });
+
+    refs.closeNoteModalButton?.addEventListener("click", closeNoteModal);
+
+    refs.clearNoteButton?.addEventListener("click", async () => {
+      await saveCardNote("");
+    });
+
+    refs.postItPresetButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const selectedColor = toColorInputValue(button.dataset.postitColor || "");
+        refs.fields.postItColor.value = selectedColor;
+        updatePostItPresetSelection(selectedColor);
+      });
+    });
+
+    refs.fields.postItColor.addEventListener("input", (event) => {
+      updatePostItPresetSelection(event.target.value);
+    });
+
     refs.alertOkButton?.addEventListener("click", confirmAlertModal);
     refs.alertCloseButton?.addEventListener("click", closeAlertModal);
 
@@ -1196,6 +1584,19 @@
       }
     });
 
+    refs.noteModal?.addEventListener("click", (event) => {
+      const bounds = refs.noteModal.getBoundingClientRect();
+      const clickedOutside =
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom;
+
+      if (clickedOutside) {
+        closeNoteModal();
+      }
+    });
+
     refs.searchInput.addEventListener("input", (event) => {
       state.filters.search = event.target.value;
       renderBoard();
@@ -1219,6 +1620,21 @@
     refs.sortBy.addEventListener("change", (event) => {
       state.filters.sortBy = event.target.value;
       renderBoard();
+    });
+
+    refs.deadlineWarningDaysInput?.addEventListener("change", (event) => {
+      const normalizedValue = saveDeadlineWarningDays(event.target.value);
+      state.settings.deadlineWarningDays = normalizedValue;
+      event.target.value = String(normalizedValue);
+      renderBoard();
+      showToast("Configuracao salva com sucesso.");
+    });
+
+    refs.successToastDurationInput?.addEventListener("change", (event) => {
+      const normalizedValue = saveSuccessToastVisibleMs(event.target.value);
+      state.settings.successToastVisibleMs = normalizedValue;
+      event.target.value = formatSuccessToastDurationSeconds(normalizedValue);
+      showToast("Configuracao salva com sucesso.");
     });
 
     refs.backupButton?.addEventListener("click", async () => {
@@ -1271,6 +1687,9 @@
   }
 
   async function init() {
+    state.settings.deadlineWarningDays = getStoredDeadlineWarningDays();
+    state.settings.successToastVisibleMs = getStoredSuccessToastVisibleMs();
+
     refs.interactive = [
       refs.newCardButton,
       refs.searchInput,
