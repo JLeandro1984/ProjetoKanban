@@ -149,19 +149,24 @@
   box-sizing: border-box;
 }
 
-html,
-body {
-  margin: 0;
-  min-height: 100%;
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
   font-family: "Manrope", "Segoe UI", sans-serif;
   color: var(--text-main);
   background:
     radial-gradient(circle at 0% 0%, var(--bg-glow-1), transparent 40%),
     radial-gradient(circle at 100% 100%, var(--bg-glow-2), transparent 35%),
     var(--bg-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 body,
@@ -285,11 +290,25 @@ h3 {
   color: var(--text-main);
   background: var(--bg-surface);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field input[type="search"] {
+  -webkit-appearance: searchfield;
+}
+
+.field select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%231b2a3a' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  padding-right: 2rem;
 }
 
 .field textarea {
   resize: vertical;
   min-height: 90px;
+  -webkit-appearance: none;
 }
 
 .field input[type="color"] {
@@ -1302,6 +1321,7 @@ h3 {
     overflow-x: auto;
     padding-bottom: 0.3rem;
     scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
   }
 
   .kanban-board::-webkit-scrollbar {
@@ -1326,10 +1346,16 @@ h3 {
     top: 0.4rem;
     border-radius: 0.75rem;
     padding: 0.85rem;
+    gap: 0.75rem;
+  }
+
+  .topbar > div:first-child {
+    flex-basis: 100%;
   }
 
   .topbar__filters {
     grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
   }
 
   .topbar__filters .field--search {
@@ -1338,10 +1364,13 @@ h3 {
 
   .topbar__buttons {
     width: 100%;
+    gap: 0.4rem;
   }
 
   .topbar__buttons .btn {
     flex: 1 1 auto;
+    min-height: 44px;
+    font-size: 0.75rem;
   }
 
   .settings-modal__actions .btn {
@@ -1351,37 +1380,455 @@ h3 {
   .modal__grid {
     grid-template-columns: 1fr;
   }
+
+  .field input,
+  .field select,
+  .field textarea {
+    font-size: 16px;
+    padding: 0.75rem;
+    min-height: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+    padding: 0.7rem 1rem;
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .kanban-board {
+    min-height: calc(100dvh - 140px);
+  }
+
+  .kanban-column {
+    min-height: 60vh;
+  }
+
+  .kanban-card {
+    border-radius: 0.5rem;
+  }
+
+  .kanban-card__content {
+    padding: 1rem 0.9rem 0.85rem;
+  }
+
+  .card-actions button {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.78rem;
+    min-height: 36px;
+  }
+
+  .card-actions__note,
+  .card-actions__edit,
+  .card-actions__delete,
+  .card-actions__pause {
+    min-width: 36px;
+    min-height: 36px;
+  }
 }
 
 @media (max-width: 540px) {
-  .topbar h1 {
-    font-size: 1.15rem;
+  .app-shell {
+    width: calc(100% - 0.8rem);
+    margin: 0.6rem auto 0.8rem;
   }
 
-  .postit-presets {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .topbar {
+    top: 0.2rem;
+    border-radius: 0.6rem;
+    padding: 0.65rem;
+    --settings-icon-size: 40px;
+    --settings-icon-right: 0.65rem;
+    --settings-icon-top: calc(0.65rem + 0.85rem);
+    gap: 0.5rem;
+  }
+
+  .topbar > div:first-child {
+    flex-basis: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .topbar__eyebrow {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+  }
+
+  .topbar h1 {
+    font-size: 1.1rem;
+    line-height: 1.2;
+  }
+
+  .topbar__actions {
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+    padding-right: 0;
   }
 
   .topbar__filters {
     grid-template-columns: 1fr;
-  }
-
-  .topbar__actions {
-    padding-right: calc(var(--settings-icon-size) + 0.55rem);
-  }
-
-  .topbar {
-    --settings-icon-size: 40px;
-    --settings-icon-right: 0.8rem;
-    --settings-icon-top: calc(0.85rem + 0.95rem);
+    gap: 0.4rem;
   }
 
   .topbar__filters .field--search {
     grid-column: auto;
   }
 
+  .topbar__buttons {
+    width: 100%;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+  }
+
+  .topbar__buttons .btn {
+    flex: 1 1 calc(50% - 0.15rem);
+    font-size: 0.7rem;
+    padding: 0.6rem 0.5rem;
+  }
+
+  #newCardButton {
+    flex-basis: 100%;
+  }
+
+  #installAppButton {
+    flex-basis: 100%;
+  }
+
+  .postit-presets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .postit-preset {
+    aspect-ratio: 1 / 1;
+  }
+
+  .field {
+    gap: 0.25rem;
+  }
+
+  .field__label {
+    font-size: 0.72rem;
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    font-size: 16px;
+    padding: 0.7rem 0.6rem;
+    border-radius: 0.6rem;
+    min-height: 44px;
+  }
+
+  .field textarea {
+    min-height: 100px;
+  }
+
+  .field input[type="color"] {
+    min-height: 40px;
+  }
+
+  .btn {
+    min-height: 44px;
+    border-radius: 0.6rem;
+    padding: 0.65rem 0.8rem;
+    font-size: 0.8rem;
+  }
+
+  .modal {
+    width: calc(100% - 1rem);
+    border-radius: 0.8rem;
+    max-height: 90vh;
+  }
+
+  .modal__content {
+    padding: 0.9rem;
+    gap: 0.7rem;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .modal__header {
+    gap: 0.5rem;
+  }
+
+  .modal__header h3 {
+    font-size: 1rem;
+  }
+
+  .modal__grid {
+    gap: 0.6rem;
+  }
+
+  .modal__footer {
+    gap: 0.4rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .modal__footer .btn {
+    flex: 1;
+  }
+
   .alert-modal {
     width: calc(100% - 0.8rem);
+    border-radius: 0.8rem;
+  }
+
+  .alert-modal__content {
+    padding: 0.9rem;
+  }
+
+  .alert-modal__title-group {
+    gap: 0.5rem;
+  }
+
+  .alert-modal__badge {
+    font-size: 1.2rem;
+  }
+
+  .alert-modal__message {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin: 0.6rem 0;
+  }
+
+  .alert-modal__footer .btn {
+    width: 100%;
+  }
+
+  .kanban-board {
+    gap: 0.6rem;
+    min-height: calc(100dvh - 160px);
+    padding-bottom: 0.5rem;
+  }
+
+  .kanban-column {
+    min-height: 50vh;
+    border-radius: 0.8rem;
+  }
+
+  .kanban-column__header {
+    padding: 0.75rem;
+    gap: 0.3rem;
+  }
+
+  .kanban-column__header h2 {
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .counter {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.4rem;
+    min-width: 1.6rem;
+  }
+
+  .kanban-column__body {
+    padding: 0.6rem;
+    border-radius: 0.6rem;
+  }
+
+  .kanban-column__list {
+    gap: 0.6rem;
+  }
+
+  .kanban-card {
+    border-radius: 0.4rem;
+    min-height: auto;
+  }
+
+  .kanban-card::before {
+    width: 60px;
+    height: 16px;
+    top: -0.3rem;
+  }
+
+  .kanban-card::after {
+    width: 14px;
+    height: 14px;
+  }
+
+  .kanban-card__content {
+    gap: 0.35rem;
+    padding: 0.8rem 0.7rem 0.65rem;
+  }
+
+  .kanban-card__title {
+    font-size: 0.9rem;
+    line-height: 1.15;
+  }
+
+  .kanban-card__description {
+    font-size: 0.78rem;
+    line-height: 1.35;
+    max-height: 80px;
+  }
+
+  .kanban-card__description::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .kanban-card__meta {
+    gap: 0.25rem;
+    font-size: 0.7rem;
+  }
+
+  .kanban-card__signals {
+    gap: 0.35rem;
+    min-height: 1.6rem;
+  }
+
+  .deadline-badge {
+    padding: 0.18rem 0.45rem;
+    font-size: 0.6rem;
+    letter-spacing: 0.03em;
+  }
+
+  .badge {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  .card-actions {
+    gap: 0.2rem;
+  }
+
+  .card-actions button {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.65rem;
+    border-radius: 0.35rem;
+    min-height: 32px;
+  }
+
+  .card-actions__note,
+  .card-actions__edit,
+  .card-actions__delete {
+    width: 30px;
+    min-width: 30px;
+    min-height: 30px;
+  }
+
+  .card-actions__note-icon,
+  .card-actions__edit-icon,
+  .card-actions__delete-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .card-actions__pause {
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+  }
+
+  .card-actions__pause-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .time-log__summary {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+    padding: 0.8rem;
+  }
+
+  .time-log__summary-label {
+    font-size: 0.72rem;
+  }
+
+  .time-log__summary-value {
+    font-size: 1.2rem;
+  }
+
+  .time-log__entry {
+    padding: 0.8rem;
+    gap: 0.4rem;
+    border-radius: 0.6rem;
+  }
+
+  .time-log__entry-header {
+    gap: 0.5rem;
+  }
+
+  .time-log__entry-status {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.45rem;
+  }
+
+  .time-log__entry-row {
+    font-size: 0.75rem;
+    gap: 0.4rem;
+  }
+
+  .time-log__entry-duration {
+    font-size: 0.75rem;
+    gap: 0.4rem;
+  }
+
+  .time-log__duration-badge {
+    font-size: 0.65rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .success-toast {
+    width: calc(100% - 1rem);
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+  }
+
+  .empty-state {
+    padding: 1.5rem 1rem;
+    border-radius: 0.8rem;
+  }
+
+  .empty-state__icon {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 0.5rem;
+  }
+
+  .empty-state__title {
+    font-size: 0.95rem;
+  }
+
+  .empty-state__text {
+    font-size: 0.8rem;
+  }
+
+  .settings-modal__content {
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .settings-modal__info {
+    padding: 0.8rem;
+    border-radius: 0.6rem;
+  }
+
+  .settings-modal__label {
+    font-size: 0.78rem;
+  }
+
+  .settings-modal__path {
+    font-size: 0.8rem;
+  }
+
+  .settings-modal__hint {
+    font-size: 0.75rem;
+  }
+
+  .settings-modal__actions {
+    gap: 0.4rem;
+  }
+
+  .settings-modal__actions .btn {
+    font-size: 0.8rem;
+    width: 100%;
   }
 }
 
@@ -1601,4 +2048,83 @@ h3 {
   color: #31af72;
   border-color: rgba(49, 175, 114, 0.34);
   background: rgba(49, 175, 114, 0.1);
+}
+
+/* ====== MOBILE-FIRST TOUCH OPTIMIZATIONS ====== */
+
+@supports (touch-action: manipulation) {
+  button,
+  [role="button"],
+  a {
+    touch-action: manipulation;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .btn:hover {
+    transform: translateY(-1px);
+  }
+
+  .btn:active {
+    transform: translateY(0);
+  }
+
+  .kanban-card:hover {
+    transform: rotate(var(--rotation, 0deg));
+  }
+
+  .postit-preset:hover {
+    transform: none;
+  }
+
+  .card-actions button:hover {
+    background: rgba(255, 255, 255, 0.75);
+  }
+}
+
+/* ====== LANDSCAPE MODE ON MOBILE ====== */
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .topbar {
+    top: 0;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .topbar h1 {
+    font-size: 1rem;
+  }
+
+  .topbar__actions {
+    gap: 0.4rem;
+  }
+
+  .topbar__filters {
+    gap: 0.3rem;
+  }
+
+  .kanban-board {
+    min-height: calc(100dvh - 100px);
+  }
+
+  .kanban-column {
+    min-height: auto;
+  }
+}
+
+/* ====== HIGH CONTRAST MODE ====== */
+
+@media (prefers-contrast: more) {
+  .btn--primary {
+    border: 2px solid var(--accent-strong);
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    border-width: 2px;
+  }
+
+  .kanban-card {
+    border-width: 2px;
+  }
 }
