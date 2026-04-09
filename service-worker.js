@@ -1,4 +1,4 @@
-const CACHE_NAME = "kanban-projetos-cache-v1";
+const CACHE_NAME = "kanban-projetos-cache-v2";
 
 const APP_SHELL_FILES = [
   "./",
@@ -31,6 +31,12 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
@@ -38,19 +44,35 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
+  const requestUrl = new URL(request.url);
+  if (requestUrl.origin !== self.location.origin) {
+    return;
+  }
 
-      return fetch(request)
-        .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
-          return response;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      try {
+        const networkResponse = await fetch(request);
+
+        if (networkResponse && networkResponse.status === 200) {
+          cache.put(request, networkResponse.clone());
+        }
+
+        return networkResponse;
+      } catch (error) {
+        const cached = await cache.match(request);
+        if (cached) {
+          return cached;
+        }
+
+        if (request.mode === "navigate") {
+          return caches.match("./index.html");
+        }
+
+        throw error;
+      }
+    })()
   );
 });

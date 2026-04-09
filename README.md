@@ -40,6 +40,60 @@ A tela conta com cinco colunas padrao de fluxo de trabalho, filtros dinamicos, o
   - Fila de mensagens para notificacoes modais
 - Instalacao opcional como PWA (Progressive Web App)
 - Cache basico offline para arquivos do app shell
+- Tema escuro profissional com transicao suave
+- Controle de tema em Configuracoes: Claro, Escuro ou Seguir Sistema
+- Auto-update automático do PWA sem necessidade de desinstalar/reinstalar
+
+## Melhorias Recentes
+
+### Auto-Update do PWA
+
+O service worker agora utiliza estrategia de **network-first** para arquivos da aplicacao:
+
+- Verifica atualizacoes automaticamente ao abrir o app
+- Recarrega em background quando detecta nova versao
+- Ativa a nova versao imediatamente e recarrega a pagina com notificacao visual
+- Verifica atualizacoes a cada 60 segundos enquanto o app esta em uso
+- Continua funcionando offline com cache local como fallback
+
+**Beneficio**: Usuarios do PWA instalado recebem atualizacoes sem precisar desinstalar/reinstalar.
+
+### Tema Escuro e Claro
+
+Suite completa de tema com transicao suave:
+
+- **Claro** (padrao inicial): Ambiente de trabalho corporativo e descanso visual
+- **Escuro**: Otimizado para trabalho contínuo, reduz fadiga ocular
+- **Seguir Sistema**: Acompanha preferencia do dispositivo automaticamente
+- Seletor na modal de Configuracoes
+- Transicao suave (0.26s) entre temas com easing natural
+- Respeita preferencia de usuario com `prefers-reduced-motion`
+- Tokens CSS consistentes: cores de fundo, texto, bordas, sombras e componentes
+- Tema salvo em localStorage e carregado na proxima sessao
+
+**Design Profissional**:
+- Post-its mantêm cores vibrantes em ambos temas
+- Titulos escuros para legibilidade total nos post-its
+- Botoes e modais adaptados para cada tema
+- Icone de configuracoes com visual coeso no dark
+
+### Armazenamento Local Automatico
+
+O app agora funciona imediatamente, mesmo sem diretorio externo configurado:
+
+- **Modo Local**: Dados salvos em localStorage do navegador automaticamente
+- **Modo Sincronizado**: Se configurar diretorio, sync acontece transparentemente
+- **Seamless**: Ao ativar diretorio depois, dados locais sao sincronizados
+- Mensagens contextuas informam modo ativo (Local vs Sincronizado)
+
+**Beneficio**: Usuarios podem criar cards imediatamente e configurar backup depois.
+
+### Ajustes Visuais no Dark Mode
+
+- Cores de botoes calibradas por tema (primary, secondary, ghost)
+- Botao de engrenagem adaptado com borda e sombra adequadas
+- Contraste otimizado em modais, campos e componentes
+- Estados hover/foco/active visiveis em ambos temas
 
 ### Persistencia em diretorio local
 

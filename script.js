@@ -3,6 +3,7 @@
   const LAST_COLOR_KEY = "kanban-last-postit-color-v1";
   const DEADLINE_WARNING_DAYS_KEY = "kanban-deadline-warning-days-v1";
   const SUCCESS_TOAST_VISIBLE_MS_KEY = "kanban-success-toast-visible-ms-v1";
+  const THEME_PREFERENCE_KEY = "kanban-theme-preference-v1";
   const BACKUP_DB_NAME = "kanban-backup-config-v1";
   const BACKUP_DB_STORE = "settings";
   const BACKUP_HANDLE_KEY = "backup-directory-handle";
@@ -51,6 +52,7 @@
   const DAY_IN_MS = 24 * 60 * 60 * 1000;
   const DEFAULT_DEADLINE_WARNING_DAYS = 2;
   const DEFAULT_SUCCESS_TOAST_VISIBLE_MS = 2800;
+  const DEFAULT_THEME_PREFERENCE = "light";
   const SUCCESS_TOAST_EXIT_MS = 420;
   const MAX_SUCCESS_TOASTS = 3;
 
@@ -63,6 +65,7 @@
     settings: {
       deadlineWarningDays: DEFAULT_DEADLINE_WARNING_DAYS,
       successToastVisibleMs: DEFAULT_SUCCESS_TOAST_VISIBLE_MS,
+      themePreference: DEFAULT_THEME_PREFERENCE,
     },
     filters: {
       search: "",
@@ -100,6 +103,7 @@
     closeSettingsButton: document.querySelector("#closeSettingsButton"),
     deadlineWarningDaysInput: document.querySelector("#deadlineWarningDaysInput"),
     successToastDurationInput: document.querySelector("#successToastDurationInput"),
+    themePreferenceInput: document.querySelector("#themePreferenceInput"),
     directoryStatusDot: document.querySelector("#directoryStatusDot"),
     directoryPathText: document.querySelector("#directoryPathText"),
     alertModal: document.querySelector("#alertModal"),
@@ -138,6 +142,7 @@
   let installPromptEvent = null;
   const alertQueue = [];
   let currentAlert = null;
+  const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
   function generateId() {
     return `card-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -228,6 +233,53 @@
     const normalizedValue = sanitizeSuccessToastVisibleMs(value);
     localStorage.setItem(SUCCESS_TOAST_VISIBLE_MS_KEY, String(normalizedValue));
     return normalizedValue;
+  }
+
+  function sanitizeThemePreference(value) {
+    const normalizedValue = String(value || "").trim().toLowerCase();
+
+    if (normalizedValue === "light" || normalizedValue === "dark" || normalizedValue === "system") {
+      return normalizedValue;
+    }
+
+    return DEFAULT_THEME_PREFERENCE;
+  }
+
+  function getStoredThemePreference() {
+    const savedValue = localStorage.getItem(THEME_PREFERENCE_KEY);
+    return sanitizeThemePreference(savedValue);
+  }
+
+  function saveThemePreference(value) {
+    const normalizedValue = sanitizeThemePreference(value);
+    localStorage.setItem(THEME_PREFERENCE_KEY, normalizedValue);
+    return normalizedValue;
+  }
+
+  function resolveEffectiveTheme(themePreference) {
+    if (themePreference === "light" || themePreference === "dark") {
+      return themePreference;
+    }
+
+    return systemThemeQuery.matches ? "dark" : "light";
+  }
+
+  function applyThemePreference(themePreference) {
+    const normalizedPreference = sanitizeThemePreference(themePreference);
+    const effectiveTheme = resolveEffectiveTheme(normalizedPreference);
+
+    state.settings.themePreference = normalizedPreference;
+    document.documentElement.dataset.theme = effectiveTheme;
+    document.documentElement.style.colorScheme = effectiveTheme;
+
+    const themeColorMeta = document.querySelector("meta[name='theme-color']");
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute("content", effectiveTheme === "dark" ? "#121b28" : "#1b6fd8");
+    }
+
+    if (refs.themePreferenceInput) {
+      refs.themePreferenceInput.value = normalizedPreference;
+    }
   }
 
   function normalizeCard(card) {
@@ -521,7 +573,12 @@
     },
     async load() {
       if (!backupManager.directoryHandle) {
-        throw new Error("Diretorio de dados nao configurado.");
+        const localCards = this.loadLegacyLocalStorage();
+        if (localCards.length) {
+          return localCards.map((card) => normalizeCard(card));
+        }
+
+        return mockCards.map((card) => normalizeCard(card));
       }
 
       try {
@@ -550,7 +607,8 @@
     },
     async save(cards) {
       if (!backupManager.directoryHandle) {
-        throw new Error("Diretorio de dados nao configurado.");
+        localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(cards));
+        return;
       }
 
       await backupManager.sync(cards);
@@ -585,6 +643,10 @@
       refs.successToastDurationInput.value = formatSuccessToastDurationSeconds(
         state.settings.successToastVisibleMs
       );
+    }
+
+    if (refs.themePreferenceInput) {
+      refs.themePreferenceInput.value = state.settings.themePreference;
     }
 
     refs.settingsModal.showModal();
@@ -1471,10 +1533,65 @@
 
   function setupPwa() {
     if ("serviceWorker" in navigator) {
+      let isRefreshing = false;
+      let updateReloadScheduled = false;
+
+      const scheduleReloadForUpdate = () => {
+        if (updateReloadScheduled) return;
+
+        updateReloadScheduled = true;
+        showSuccessToast("Nova versao detectada. Atualizando app...");
+
+        window.setTimeout(() => {
+          if (isRefreshing) return;
+          isRefreshing = true;
+          window.location.reload();
+        }, 900);
+      };
+
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./service-worker.js").catch((error) => {
-          console.error("Falha ao registrar service worker:", error);
-        });
+        navigator.serviceWorker
+          .register("./service-worker.js", { updateViaCache: "none" })
+          .then((registration) => {
+            const forceUpdate = () => {
+              registration.update().catch((error) => {
+                console.error("Falha ao verificar atualizacao do service worker:", error);
+              });
+            };
+
+            if (registration.waiting) {
+              showSuccessToast("Aplicando atualizacao disponivel...");
+              registration.waiting.postMessage({ type: "SKIP_WAITING" });
+            }
+
+            registration.addEventListener("updatefound", () => {
+              const newWorker = registration.installing;
+              if (!newWorker) return;
+
+              newWorker.addEventListener("statechange", () => {
+                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                  showSuccessToast("Nova versao pronta. Atualizando...");
+                  newWorker.postMessage({ type: "SKIP_WAITING" });
+                }
+              });
+            });
+
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+              scheduleReloadForUpdate();
+            });
+
+            document.addEventListener("visibilitychange", () => {
+              if (document.visibilityState === "visible") {
+                forceUpdate();
+              }
+            });
+
+            forceUpdate();
+            window.setInterval(forceUpdate, 60 * 1000);
+          })
+          .catch((error) => {
+            console.error("Falha ao registrar service worker:", error);
+          });
       });
     }
 
@@ -1637,6 +1754,18 @@
       showToast("Configuracao salva com sucesso.");
     });
 
+    refs.themePreferenceInput?.addEventListener("change", (event) => {
+      const normalizedValue = saveThemePreference(event.target.value);
+      applyThemePreference(normalizedValue);
+      showToast("Tema atualizado com sucesso.");
+    });
+
+    systemThemeQuery.addEventListener("change", () => {
+      if (state.settings.themePreference === "system") {
+        applyThemePreference("system");
+      }
+    });
+
     refs.backupButton?.addEventListener("click", async () => {
       if (!isBackupSupported()) {
         showToast("Diretorio local nao e suportado neste navegador.", "error");
@@ -1689,6 +1818,8 @@
   async function init() {
     state.settings.deadlineWarningDays = getStoredDeadlineWarningDays();
     state.settings.successToastVisibleMs = getStoredSuccessToastVisibleMs();
+    state.settings.themePreference = getStoredThemePreference();
+    applyThemePreference(state.settings.themePreference);
 
     refs.interactive = [
       refs.newCardButton,
@@ -1699,7 +1830,7 @@
       refs.sortBy,
     ];
 
-    setStorageReady(false);
+    setStorageReady(true);
     await backupManager.init();
     updateBackupButtonState();
     attachEvents();
@@ -1710,9 +1841,10 @@
         await loadCardsFromDirectory();
       } catch (error) {
         console.error("Erro ao carregar cards do diretorio local:", error);
-        setStorageReady(false);
+        state.cards = cardRepository.loadLegacyLocalStorage().map((card) => normalizeCard(card));
+        setStorageReady(true);
         showToast(
-          "Selecione um diretório para carregar os dados.",
+          "Nao foi possivel carregar o diretorio. Usando armazenamento local.",
           "info",
           "Selecionar diretório",
           true,
@@ -1720,8 +1852,10 @@
         );
       }
     } else {
+      state.cards = await cardRepository.load();
+      setStorageReady(true);
       showToast(
-        "Selecione um diretório para carregar os dados.",
+        "Modo local ativo. Se quiser, selecione um diretório para sincronizar os dados.",
         "info",
         "Selecionar diretório",
         true,
